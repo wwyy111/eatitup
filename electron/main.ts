@@ -5,6 +5,7 @@ import Store from 'electron-store'
 
 const store = new Store()
 const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://www.feishu.cn/minutes/home'
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
 let floatingWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -12,6 +13,17 @@ let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
 } | null = null
+
+if (!gotSingleInstanceLock) {
+  app.quit()
+}
+
+app.on('second-instance', () => {
+  if (floatingWindow) {
+    floatingWindow.show()
+    floatingWindow.focus()
+  }
+})
 
 // 创建悬浮按钮窗口
 function createFloatingWindow() {
@@ -119,7 +131,35 @@ function createTray() {
 async function openFeishuMeeting() {
   const feishuAppLink = `https://applink.feishu.cn/client/web_url/open?mode=appCenter&reload=false&url=${encodeURIComponent(FEISHU_MINUTES_HOME_URL)}`
 
+  if (process.platform === 'darwin') {
+    try {
+      await openUrlWithMacApp('Lark', FEISHU_MINUTES_HOME_URL)
+      return
+    } catch (error) {
+      console.error('使用 Lark 打开妙记失败:', error)
+    }
+
+    try {
+      await openUrlWithMacApp('飞书', FEISHU_MINUTES_HOME_URL)
+      return
+    } catch (error) {
+      console.error('使用飞书打开妙记失败:', error)
+    }
+  }
+
   await shell.openExternal(feishuAppLink)
+}
+
+function openUrlWithMacApp(appName: string, url: string) {
+  return new Promise<void>((resolve, reject) => {
+    execFile('open', ['-a', appName, url], (error) => {
+      if (error) {
+        reject(error)
+      } else {
+        resolve()
+      }
+    })
+  })
 }
 
 function clickFeishuRecordButton() {
