@@ -35,7 +35,6 @@ function createFloatingWindow() {
   // 加载悬浮按钮页面
   if (process.env.NODE_ENV === 'development') {
     floatingWindow.loadURL('http://localhost:5173/#/floating')
-    floatingWindow.webContents.openDevTools()
   } else {
     floatingWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
       hash: '/floating'
@@ -170,6 +169,10 @@ async function startFeishuRecording() {
 
 // 应用启动
 app.whenReady().then(() => {
+  if (process.platform === 'darwin') {
+    app.dock.hide()
+  }
+
   createFloatingWindow()
   createTray()
 
