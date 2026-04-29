@@ -195,6 +195,7 @@ code {
 }
 
 .floating-stage:hover .floating-switcher,
+.floating-stage:hover .hotkey-burst,
 .floating-stage:hover .floating-config {
   opacity: 1;
   transform: translateY(0);
@@ -202,12 +203,72 @@ code {
 }
 
 .floating-switcher button,
+.hotkey-burst button,
 .floating-config {
   border: 0;
   cursor: pointer;
   color: #1f2937;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+}
+
+.floating-button-container.is-hotkey-mode::before {
+  background:
+    radial-gradient(circle at calc(50% + var(--mx)) calc(42% + var(--my)), rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.16) 30%, transparent 48%),
+    linear-gradient(145deg, #f59e0b 0%, #7c3aed 55%, #0f766e 100%);
+}
+
+.hotkey-burst {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(0.86);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 180ms ease;
+}
+
+.hotkey-burst button {
+  --accent: #f59e0b;
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.hotkey-burst-item-0 {
+  left: 92px;
+  top: 10px;
+}
+
+.hotkey-burst-item-1 {
+  right: 20px;
+  top: 52px;
+}
+
+.hotkey-burst-item-2 {
+  right: 30px;
+  bottom: 44px;
+}
+
+.hotkey-burst-item-3 {
+  left: 92px;
+  bottom: 10px;
+}
+
+.hotkey-burst-item-4 {
+  left: 20px;
+  bottom: 44px;
+}
+
+.hotkey-burst-item-5 {
+  left: 20px;
+  top: 52px;
 }
 
 .floating-switcher button {
@@ -300,6 +361,36 @@ code {
   margin-bottom: 28px;
 }
 
+.mode-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.segmented-control {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: #e5e7eb;
+}
+
+.segmented-control button {
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  min-width: 72px;
+  height: 34px;
+  cursor: pointer;
+  font-weight: 700;
+  color: #4b5563;
+}
+
+.segmented-control button.is-selected {
+  background: white;
+  color: #111827;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
 .eyebrow,
 .section-heading span {
   font-size: 12px;
@@ -384,6 +475,10 @@ code {
   flex: 1;
 }
 
+.shortcut-identity > span:last-child {
+  min-width: 0;
+}
+
 .shortcut-icon {
   width: 42px;
   height: 42px;
@@ -410,7 +505,7 @@ code {
 
 .shortcut-identity small {
   color: #6b7280;
-  max-width: 420px;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -487,6 +582,33 @@ code {
   padding: 0 12px;
   font: inherit;
   background: white;
+}
+
+.advanced-settings {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fbfcff;
+}
+
+.advanced-settings summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  color: #374151;
+}
+
+.inline-option {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 9px !important;
+  margin-top: 12px;
+  font-weight: 600 !important;
+}
+
+.inline-option input {
+  width: 16px;
+  height: 16px;
 }
 
 .swatch-group,

@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   executeShortcut: (shortcutId?: string) => ipcRenderer.invoke('shortcut:execute', shortcutId),
   setActiveShortcut: (shortcutId: string) => ipcRenderer.invoke('shortcut:set-active', shortcutId),
   getActiveShortcut: () => ipcRenderer.invoke('shortcut:get-active'),
+  setLauncherMode: (mode: string) => ipcRenderer.invoke('launcher-mode:set', mode),
+  getLauncherMode: () => ipcRenderer.invoke('launcher-mode:get'),
   openFeishuMeeting: () => ipcRenderer.invoke('open-feishu-meeting'),
   openMainWindow: () => ipcRenderer.invoke('open-main-window'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),

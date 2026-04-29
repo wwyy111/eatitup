@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell, Tray, Menu, nativeImage, ipcMain, screen, sy
 import { execFile } from 'child_process'
 import * as path from 'path'
 import Store from 'electron-store'
-import { DEFAULT_SHORTCUTS, type Shortcut } from '../src/shortcuts'
+import { DEFAULT_SHORTCUTS, type LauncherMode, type Shortcut } from '../src/shortcuts'
 
 const store = new Store()
 const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://www.feishu.cn/minutes/home'
@@ -33,8 +33,8 @@ function createFloatingWindow() {
   const savedPosition = store.get('windowPosition', { x: -1, y: -1 }) as { x: number; y: number }
 
   floatingWindow = new BrowserWindow({
-    width: 148,
-    height: 148,
+    width: 220,
+    height: 220,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -63,7 +63,7 @@ function createFloatingWindow() {
     // 默认位置：屏幕右上角
     const primaryDisplay = screen.getPrimaryDisplay()
     const { x, y, width } = primaryDisplay.workArea
-    floatingWindow.setPosition(x + width - 168, y + 20)
+    floatingWindow.setPosition(x + width - 240, y + 20)
   }
 
   floatingWindow.on('move', () => {
@@ -219,6 +219,85 @@ function openMacApp(appName: string) {
   })
 }
 
+function escapeAppleScriptText(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+function createHotkeyScript(hotkey: string) {
+  const parts = hotkey
+    .split('+')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  const key = parts.pop()
+  if (!key) {
+    throw new Error('快捷键不能为空')
+  }
+
+  const modifierMap: Record<string, string> = {
+    command: 'command down',
+    cmd: 'command down',
+    '⌘': 'command down',
+    shift: 'shift down',
+    '⇧': 'shift down',
+    option: 'option down',
+    opt: 'option down',
+    alt: 'option down',
+    '⌥': 'option down',
+    control: 'control down',
+    ctrl: 'control down',
+    '⌃': 'control down'
+  }
+
+  const keyCodeMap: Record<string, number> = {
+    return: 36,
+    enter: 36,
+    tab: 48,
+    space: 49,
+    delete: 51,
+    backspace: 51,
+    escape: 53,
+    esc: 53,
+    left: 123,
+    right: 124,
+    down: 125,
+    up: 126
+  }
+
+  const modifiers = parts
+    .map((part) => modifierMap[part.toLowerCase()])
+    .filter(Boolean)
+
+  const usingClause = modifiers.length > 0 ? ` using {${modifiers.join(', ')}}` : ''
+  const normalizedKey = key.toLowerCase()
+
+  if (keyCodeMap[normalizedKey]) {
+    return `tell application "System Events" to key code ${keyCodeMap[normalizedKey]}${usingClause}`
+  }
+
+  return `tell application "System Events" to keystroke "${escapeAppleScriptText(key)}"${usingClause}`
+}
+
+function sendHotkey(hotkey: string) {
+  if (process.platform !== 'darwin') {
+    return Promise.resolve()
+  }
+
+  if (!ensureAccessibilityPermission()) {
+    return Promise.resolve()
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    execFile('osascript', ['-e', createHotkeyScript(hotkey)], (error) => {
+      if (error) {
+        reject(error)
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
 function ensureAccessibilityPermission() {
   if (process.platform !== 'darwin') {
     return true
@@ -319,13 +398,24 @@ function normalizeShortcuts(value: unknown): Shortcut[] {
       symbol: String(shortcut.symbol || 'bolt'),
       enabled: shortcut.enabled !== false
     }))
-    .filter((shortcut) => ['feishu-record', 'url', 'app'].includes(shortcut.kind))
+    .filter((shortcut) => ['feishu-record', 'url', 'app', 'hotkey'].includes(shortcut.kind))
 
   return shortcuts.length > 0 ? shortcuts : DEFAULT_SHORTCUTS
 }
 
 function getShortcuts() {
-  return normalizeShortcuts(store.get('shortcuts'))
+  const shortcuts = normalizeShortcuts(store.get('shortcuts'))
+  if (!store.get('hotkeyMigrationV1')) {
+    const migratedShortcuts = shortcuts.some((shortcut) => shortcut.kind === 'hotkey')
+      ? shortcuts
+      : [...shortcuts, DEFAULT_SHORTCUTS.find((shortcut) => shortcut.kind === 'hotkey')!]
+
+    store.set('shortcuts', migratedShortcuts)
+    store.set('hotkeyMigrationV1', true)
+    return migratedShortcuts
+  }
+
+  return shortcuts
 }
 
 function saveShortcuts(shortcuts: unknown) {
@@ -350,6 +440,17 @@ function getActiveShortcutId() {
   return activeShortcut.id
 }
 
+function getLauncherMode(): LauncherMode {
+  const mode = store.get('launcherMode')
+  return mode === 'hotkey' ? 'hotkey' : 'launch'
+}
+
+function setLauncherMode(mode: unknown): LauncherMode {
+  const nextMode = mode === 'hotkey' ? 'hotkey' : 'launch'
+  store.set('launcherMode', nextMode)
+  return nextMode
+}
+
 async function executeShortcut(shortcutId?: string) {
   const shortcuts = getShortcuts()
   const activeShortcutId = shortcutId || getActiveShortcutId()
@@ -366,6 +467,11 @@ async function executeShortcut(shortcutId?: string) {
 
   if (shortcut.kind === 'app') {
     await openMacApp(shortcut.target)
+    return
+  }
+
+  if (shortcut.kind === 'hotkey') {
+    await sendHotkey(shortcut.target)
     return
   }
 
@@ -409,6 +515,18 @@ function createAppMenu() {
           click: () => app.quit()
         }
       ]
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'selectAll', label: '全选' }
+      ]
     }
   ]))
 }
@@ -450,6 +568,10 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('shortcut:get-active', async () => getActiveShortcutId())
+
+  ipcMain.handle('launcher-mode:get', async () => getLauncherMode())
+
+  ipcMain.handle('launcher-mode:set', async (_event, mode: unknown) => setLauncherMode(mode))
 
   ipcMain.handle('open-main-window', async () => {
     showMainWindow()

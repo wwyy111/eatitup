@@ -1,4 +1,4 @@
-import type { Shortcut } from './shortcuts'
+import type { LauncherMode, Shortcut } from './shortcuts'
 
 export {}
 
@@ -10,6 +10,8 @@ declare global {
       executeShortcut: (shortcutId?: string) => Promise<void>
       setActiveShortcut: (shortcutId: string) => Promise<string>
       getActiveShortcut: () => Promise<string>
+      setLauncherMode: (mode: LauncherMode) => Promise<LauncherMode>
+      getLauncherMode: () => Promise<LauncherMode>
       openFeishuMeeting: () => Promise<void>
       openMainWindow: () => Promise<void>
       minimizeWindow: () => Promise<void>

@@ -1,9 +1,10 @@
 import { type CSSProperties, type PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { DEFAULT_SHORTCUTS, type Shortcut } from './shortcuts'
+import { DEFAULT_SHORTCUTS, type LauncherMode, type Shortcut } from './shortcuts'
 
 const FloatingButton = () => {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS)
   const [activeShortcutId, setActiveShortcutId] = useState(DEFAULT_SHORTCUTS[0].id)
+  const [launcherMode, setLauncherMode] = useState<LauncherMode>('launch')
   const [isDragging, setIsDragging] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
@@ -16,6 +17,11 @@ const FloatingButton = () => {
     [shortcuts]
   )
 
+  const hotkeyShortcuts = useMemo(
+    () => enabledShortcuts.filter((shortcut) => shortcut.kind === 'hotkey'),
+    [enabledShortcuts]
+  )
+
   const activeShortcut = useMemo(
     () => enabledShortcuts.find((shortcut) => shortcut.id === activeShortcutId) ?? enabledShortcuts[0] ?? shortcuts[0],
     [activeShortcutId, enabledShortcuts, shortcuts]
@@ -25,14 +31,16 @@ const FloatingButton = () => {
     let isMounted = true
 
     async function loadShortcuts() {
-      const [storedShortcuts, storedActiveShortcutId] = await Promise.all([
+      const [storedShortcuts, storedActiveShortcutId, storedLauncherMode] = await Promise.all([
         window.electronAPI?.getShortcuts() ?? Promise.resolve(DEFAULT_SHORTCUTS),
-        window.electronAPI?.getActiveShortcut() ?? Promise.resolve(DEFAULT_SHORTCUTS[0].id)
+        window.electronAPI?.getActiveShortcut() ?? Promise.resolve(DEFAULT_SHORTCUTS[0].id),
+        window.electronAPI?.getLauncherMode() ?? Promise.resolve('launch' as LauncherMode)
       ])
 
       if (!isMounted) return
       setShortcuts(storedShortcuts)
       setActiveShortcutId(storedActiveShortcutId)
+      setLauncherMode(storedLauncherMode)
     }
 
     loadShortcuts()
@@ -103,7 +111,7 @@ const FloatingButton = () => {
     setIsPressed(false)
     window.electronAPI?.endFloatingDrag()
 
-    if (!hasMoved.current) {
+    if (!hasMoved.current && launcherMode === 'launch') {
       runActiveShortcut()
     }
   }
@@ -120,7 +128,7 @@ const FloatingButton = () => {
     '--my': `${pointerOffset.y}px`,
     '--tilt-x': `${pointerOffset.y * -0.35}deg`,
     '--tilt-y': `${pointerOffset.x * 0.35}deg`,
-    '--accent': activeShortcut?.accent ?? '#3370ff'
+    '--accent': launcherMode === 'hotkey' ? '#f59e0b' : activeShortcut?.accent ?? '#3370ff'
   } as CSSProperties
 
   return (
@@ -134,6 +142,7 @@ const FloatingButton = () => {
       <div
         className={[
           'floating-button-container',
+          launcherMode === 'hotkey' ? 'is-hotkey-mode' : '',
           isHovering ? 'is-hovering' : '',
           isDragging ? 'is-dragging' : '',
           isPressed ? 'is-pressed' : ''
@@ -149,12 +158,32 @@ const FloatingButton = () => {
         <div className="floating-orbit" />
         <div className="floating-glow" />
         <div className="floating-face">
-          <span className="floating-symbol">{activeShortcut?.symbol.slice(0, 2) ?? 'go'}</span>
+          <span className="floating-symbol">
+            {launcherMode === 'hotkey' ? '⌘' : activeShortcut?.symbol.slice(0, 2) ?? 'go'}
+          </span>
           <span className="floating-pulse-dot" />
         </div>
       </div>
 
-      <div className="floating-switcher" aria-label="快捷项切换">
+      {launcherMode === 'hotkey' && (
+        <div className="hotkey-burst" aria-label="快捷键按钮">
+          {hotkeyShortcuts.slice(0, 6).map((shortcut, index) => (
+            <button
+              key={shortcut.id}
+              className={`hotkey-burst-item hotkey-burst-item-${index}`}
+              style={{ '--accent': shortcut.accent } as CSSProperties}
+              type="button"
+              onClick={() => window.electronAPI?.executeShortcut(shortcut.id)}
+              title={`${shortcut.name}: ${shortcut.target}`}
+            >
+              {shortcut.symbol.slice(0, 2)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {launcherMode === 'launch' && (
+        <div className="floating-switcher" aria-label="快捷项切换">
         {enabledShortcuts.slice(0, 4).map((shortcut) => (
           <button
             key={shortcut.id}
@@ -167,7 +196,8 @@ const FloatingButton = () => {
             {shortcut.symbol.slice(0, 2)}
           </button>
         ))}
-      </div>
+        </div>
+      )}
 
       <button className="floating-config" type="button" onClick={() => window.electronAPI?.openMainWindow()}>
         +

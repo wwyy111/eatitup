@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
-import { DEFAULT_SHORTCUTS, SHORTCUT_KIND_LABEL, type Shortcut, type ShortcutKind } from './shortcuts'
+import {
+  DEFAULT_SHORTCUTS,
+  SHORTCUT_KIND_LABEL,
+  type LauncherMode,
+  type Shortcut,
+  type ShortcutKind
+} from './shortcuts'
 
 const colorOptions = ['#3370ff', '#22c55e', '#ff4d4f', '#f59e0b', '#7c3aed', '#0f766e']
 const symbolOptions = ['rec', 'doc', 'bolt', 'app', 'link', 'spark']
@@ -10,7 +16,8 @@ const emptyDraft = {
   kind: 'url' as ShortcutKind,
   target: '',
   accent: colorOptions[0],
-  symbol: 'bolt'
+  symbol: 'bolt',
+  autoStartFeishuRecording: false
 }
 
 function createShortcutId(name: string) {
@@ -21,6 +28,7 @@ function createShortcutId(name: string) {
 const MainWindow = () => {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS)
   const [activeShortcutId, setActiveShortcutId] = useState(DEFAULT_SHORTCUTS[0].id)
+  const [launcherMode, setLauncherMode] = useState<LauncherMode>('launch')
   const [draft, setDraft] = useState(emptyDraft)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -33,14 +41,16 @@ const MainWindow = () => {
     let isMounted = true
 
     async function loadShortcuts() {
-      const [storedShortcuts, storedActiveShortcutId] = await Promise.all([
+      const [storedShortcuts, storedActiveShortcutId, storedLauncherMode] = await Promise.all([
         window.electronAPI?.getShortcuts() ?? Promise.resolve(DEFAULT_SHORTCUTS),
-        window.electronAPI?.getActiveShortcut() ?? Promise.resolve(DEFAULT_SHORTCUTS[0].id)
+        window.electronAPI?.getActiveShortcut() ?? Promise.resolve(DEFAULT_SHORTCUTS[0].id),
+        window.electronAPI?.getLauncherMode() ?? Promise.resolve('launch' as LauncherMode)
       ])
 
       if (!isMounted) return
       setShortcuts(storedShortcuts)
       setActiveShortcutId(storedActiveShortcutId)
+      setLauncherMode(storedLauncherMode)
     }
 
     loadShortcuts()
@@ -61,13 +71,14 @@ const MainWindow = () => {
     event.preventDefault()
 
     const name = draft.name.trim()
-    const target = draft.kind === 'feishu-record' ? 'FEISHU_MINUTES_HOME_URL' : draft.target.trim()
+    const kind = draft.autoStartFeishuRecording ? 'feishu-record' : draft.kind
+    const target = kind === 'feishu-record' ? 'FEISHU_MINUTES_HOME_URL' : draft.target.trim()
     if (!name || !target) return
 
     const nextShortcut: Shortcut = {
       id: createShortcutId(name),
       name,
-      kind: draft.kind,
+      kind,
       target,
       accent: draft.accent,
       symbol: draft.symbol,
@@ -96,6 +107,11 @@ const MainWindow = () => {
     await window.electronAPI?.executeShortcut(shortcutId)
   }
 
+  const handleSetLauncherMode = async (mode: LauncherMode) => {
+    setLauncherMode(mode)
+    await window.electronAPI?.setLauncherMode(mode)
+  }
+
   return (
     <main className="launcher-shell">
       <aside className="launcher-sidebar">
@@ -109,16 +125,34 @@ const MainWindow = () => {
       <section className="launcher-content">
         <div className="launcher-toolbar">
           <div>
-            <span className="eyebrow">当前快捷项</span>
-            <h2>{activeShortcut?.name ?? '未选择'}</h2>
+            <span className="eyebrow">当前模式</span>
+            <h2>{launcherMode === 'hotkey' ? '快捷键模式' : activeShortcut?.name ?? '未选择'}</h2>
           </div>
-          <button
-            className="primary-action"
-            type="button"
-            onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}
-          >
-            启动
-          </button>
+          <div className="mode-actions">
+            <div className="segmented-control">
+              <button
+                className={launcherMode === 'launch' ? 'is-selected' : ''}
+                type="button"
+                onClick={() => handleSetLauncherMode('launch')}
+              >
+                启动
+              </button>
+              <button
+                className={launcherMode === 'hotkey' ? 'is-selected' : ''}
+                type="button"
+                onClick={() => handleSetLauncherMode('hotkey')}
+              >
+                快捷键
+              </button>
+            </div>
+            <button
+              className="primary-action"
+              type="button"
+              onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}
+            >
+              运行
+            </button>
+          </div>
         </div>
 
         <div className="launcher-grid">
@@ -187,19 +221,37 @@ const MainWindow = () => {
                 >
                   <option value="url">网页/平台链接</option>
                   <option value="app">本机 App</option>
-                  <option value="feishu-record">飞书妙记录音</option>
+                  <option value="hotkey">快捷键</option>
                 </select>
               </label>
 
-              {draft.kind !== 'feishu-record' && (
-                <label>
-                  {draft.kind === 'app' ? 'App 名称' : '链接'}
-                  <input
-                    value={draft.target}
-                    onChange={(event) => setDraft({ ...draft, target: event.target.value })}
-                    placeholder={draft.kind === 'app' ? '例如：Notion' : 'https://...'}
-                  />
-                </label>
+              <label>
+                {draft.kind === 'app' ? 'App 名称' : draft.kind === 'hotkey' ? '快捷键组合' : '链接'}
+                <input
+                  value={draft.target}
+                  onChange={(event) => setDraft({ ...draft, target: event.target.value })}
+                  placeholder={
+                    draft.kind === 'app'
+                      ? '例如：Notion'
+                      : draft.kind === 'hotkey'
+                        ? '例如：Command+Shift+4'
+                        : 'https://...'
+                  }
+                />
+              </label>
+
+              {draft.kind === 'url' && (
+                <details className="advanced-settings">
+                  <summary>高级设置</summary>
+                  <label className="inline-option">
+                    <input
+                      type="checkbox"
+                      checked={draft.autoStartFeishuRecording}
+                      onChange={(event) => setDraft({ ...draft, autoStartFeishuRecording: event.target.checked })}
+                    />
+                    <span>打开飞书妙记后自动点击开始录音</span>
+                  </label>
+                </details>
               )}
 
               <div className="swatch-group" aria-label="颜色">

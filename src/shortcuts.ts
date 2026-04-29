@@ -1,4 +1,5 @@
-export type ShortcutKind = 'feishu-record' | 'url' | 'app'
+export type LauncherMode = 'launch' | 'hotkey'
+export type ShortcutKind = 'feishu-record' | 'url' | 'app' | 'hotkey'
 
 export type Shortcut = {
   id: string
@@ -21,6 +22,15 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
     enabled: true
   },
   {
+    id: 'screenshot-hotkey',
+    name: '区域截图',
+    kind: 'hotkey',
+    target: 'Command+Shift+4',
+    accent: '#f59e0b',
+    symbol: 'key',
+    enabled: true
+  },
+  {
     id: 'feishu-minutes-home',
     name: '飞书妙记主页',
     kind: 'url',
@@ -34,5 +44,6 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 export const SHORTCUT_KIND_LABEL: Record<ShortcutKind, string> = {
   'feishu-record': '自动化',
   url: '网页/平台',
-  app: '本机 App'
+  app: '本机 App',
+  hotkey: '快捷键'
 }
