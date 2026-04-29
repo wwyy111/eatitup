@@ -211,6 +211,33 @@ on pageContainsText(rootElement, targetText)
   return foundElement is not missing value
 end pageContainsText
 
+on clickRecordByCoordinate(targetProcess)
+  tell application "System Events"
+    tell targetProcess
+      set windowPosition to position of front window
+      set windowSize to size of front window
+    end tell
+
+    set clickX to (item 1 of windowPosition) + (item 1 of windowSize) - 270
+    set clickY to (item 2 of windowPosition) + 145
+    click at {clickX, clickY}
+  end tell
+end clickRecordByCoordinate
+
+on tryStartRecording(targetProcess)
+  tell application "System Events"
+    if my pageContainsText(front window of targetProcess, "录音中") then return true
+
+    my clickFirstElementContainingText(front window of targetProcess, "录音")
+    delay 0.8
+    if my pageContainsText(front window of targetProcess, "录音中") then return true
+
+    my clickRecordByCoordinate(targetProcess)
+    delay 1
+    return my pageContainsText(front window of targetProcess, "录音中")
+  end tell
+end tryStartRecording
+
 tell application "System Events"
   set targetProcess to missing value
   repeat with processName in {"飞书", "Lark", "Feishu"}
@@ -242,7 +269,7 @@ tell application "System Events"
   repeat 8 times
     if my pageContainsText(front window of targetProcess, "录音中") then return
 
-    if my clickFirstElementContainingText(front window of targetProcess, "录音") then return
+    if my tryStartRecording(targetProcess) then return
 
     my clickFirstElementContainingText(front window of targetProcess, "飞书妙记")
     delay 0.7
