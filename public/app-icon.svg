@@ -1,0 +1,30 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="176" y1="112" x2="848" y2="912" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B8CFF"/>
+      <stop offset="0.55" stop-color="#29C58B"/>
+      <stop offset="1" stop-color="#FF6B6B"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(340 250) rotate(47) scale(520)">
+      <stop stop-color="white" stop-opacity="0.9"/>
+      <stop offset="0.35" stop-color="white" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softShadow" x="126" y="134" width="772" height="772" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="34" stdDeviation="34" flood-color="#10213F" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="#F7FAFF"/>
+  <g filter="url(#softShadow)">
+    <circle cx="512" cy="500" r="324" fill="url(#bg)"/>
+    <circle cx="512" cy="500" r="324" fill="url(#shine)"/>
+  </g>
+  <rect x="284" y="292" width="308" height="244" rx="76" fill="white" fill-opacity="0.96"/>
+  <path d="M372 374H507" stroke="#3370FF" stroke-width="42" stroke-linecap="round"/>
+  <path d="M372 454H468" stroke="#3370FF" stroke-width="42" stroke-linecap="round"/>
+  <circle cx="634" cy="624" r="138" fill="#FF4D4F"/>
+  <path d="M634 534V706" stroke="white" stroke-width="52" stroke-linecap="round"/>
+  <path d="M548 620H720" stroke="white" stroke-width="52" stroke-linecap="round"/>
+  <circle cx="738" cy="332" r="54" fill="white" fill-opacity="0.9"/>
+  <circle cx="738" cy="332" r="25" fill="#29C58B"/>
+</svg>

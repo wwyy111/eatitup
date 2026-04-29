@@ -6,6 +6,7 @@ import Store from 'electron-store'
 const store = new Store()
 const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://www.feishu.cn/minutes/home'
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
+const APP_NAME = '飞书录音纪要'
 
 let floatingWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -73,12 +74,16 @@ function createFloatingWindow() {
   })
 }
 
+function getAssetPath(fileName: string) {
+  return app.isPackaged
+    ? path.join(__dirname, '../dist', fileName)
+    : path.join(__dirname, '../public', fileName)
+}
+
 // 创建系统托盘
 function createTray() {
   // 创建托盘图标（使用简单的SVG图标）
-  const iconPath = app.isPackaged
-    ? path.join(__dirname, '../dist/icon.svg')
-    : path.join(__dirname, '../public/icon.svg')
+  const iconPath = getAssetPath('app-icon.png')
 
   const trayIcon = nativeImage.createFromPath(iconPath)
 
@@ -207,14 +212,48 @@ async function startFeishuRecording() {
   clickFeishuRecordButton()
 }
 
+function createAppMenu() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: APP_NAME,
+      submenu: [
+        {
+          label: '显示悬浮按钮',
+          click: () => {
+            if (floatingWindow) {
+              floatingWindow.show()
+              floatingWindow.focus()
+            } else {
+              createFloatingWindow()
+            }
+          }
+        },
+        {
+          label: '隐藏悬浮按钮',
+          click: () => floatingWindow?.hide()
+        },
+        { type: 'separator' },
+        {
+          label: '退出',
+          accelerator: 'Command+Q',
+          click: () => app.quit()
+        }
+      ]
+    }
+  ]))
+}
+
 // 应用启动
 app.whenReady().then(() => {
+  app.setName(APP_NAME)
+
   if (process.platform === 'darwin') {
-    app.dock.hide()
+    app.dock.setIcon(getAssetPath('app-icon.png'))
   }
 
   createFloatingWindow()
   createTray()
+  createAppMenu()
 
   // IPC处理程序
   ipcMain.handle('open-feishu-meeting', async () => {

@@ -43,6 +43,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "public/app-icon.icns",
       "target": ["dmg"]
     },
     "win": {
