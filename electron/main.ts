@@ -2,13 +2,15 @@ import { app, BrowserWindow, shell, Tray, Menu, nativeImage, ipcMain, screen, sy
 import { execFile } from 'child_process'
 import * as path from 'path'
 import Store from 'electron-store'
+import { DEFAULT_SHORTCUTS, type Shortcut } from '../src/shortcuts'
 
 const store = new Store()
 const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://www.feishu.cn/minutes/home'
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
-const APP_NAME = '飞书录音纪要'
+const APP_NAME = '浮点启动台'
 
 let floatingWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let dragState: {
   windowStartPosition: [number, number]
@@ -20,19 +22,19 @@ if (!gotSingleInstanceLock) {
 }
 
 app.on('second-instance', () => {
+  showMainWindow()
+
   if (floatingWindow) {
     floatingWindow.show()
-    floatingWindow.focus()
   }
 })
 
-// 创建悬浮按钮窗口
 function createFloatingWindow() {
   const savedPosition = store.get('windowPosition', { x: -1, y: -1 }) as { x: number; y: number }
 
   floatingWindow = new BrowserWindow({
-    width: 96,
-    height: 96,
+    width: 148,
+    height: 148,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -61,7 +63,7 @@ function createFloatingWindow() {
     // 默认位置：屏幕右上角
     const primaryDisplay = screen.getPrimaryDisplay()
     const { x, y, width } = primaryDisplay.workArea
-    floatingWindow.setPosition(x + width - 116, y + 20)
+    floatingWindow.setPosition(x + width - 168, y + 20)
   }
 
   floatingWindow.on('move', () => {
@@ -74,26 +76,65 @@ function createFloatingWindow() {
   })
 }
 
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1060,
+    height: 720,
+    minWidth: 900,
+    minHeight: 620,
+    title: APP_NAME,
+    backgroundColor: '#f6f7fb',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://localhost:5173/')
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+}
+
+function showMainWindow() {
+  if (!mainWindow) {
+    createMainWindow()
+    return
+  }
+
+  mainWindow.show()
+  mainWindow.focus()
+}
+
 function getAssetPath(fileName: string) {
   return app.isPackaged
     ? path.join(__dirname, '../dist', fileName)
     : path.join(__dirname, '../public', fileName)
 }
 
-// 创建系统托盘
 function createTray() {
-  // 创建托盘图标（使用简单的SVG图标）
   const iconPath = getAssetPath('app-icon.png')
-
   const trayIcon = nativeImage.createFromPath(iconPath)
 
   tray = new Tray(trayIcon)
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: '打开飞书妙记并录音',
+      label: '执行当前快捷项',
       click: () => {
-        startFeishuRecording()
+        executeShortcut()
+      }
+    },
+    {
+      label: '打开配置面板',
+      click: () => {
+        showMainWindow()
       }
     },
     {
@@ -123,12 +164,11 @@ function createTray() {
     }
   ])
 
-  tray.setToolTip('飞书录音纪要')
+  tray.setToolTip(APP_NAME)
   tray.setContextMenu(contextMenu)
 
-  // 双击托盘图标打开飞书
   tray.on('double-click', () => {
-    startFeishuRecording()
+    executeShortcut()
   })
 }
 
@@ -167,6 +207,18 @@ function openUrlWithMacApp(appName: string, url: string) {
   })
 }
 
+function openMacApp(appName: string) {
+  return new Promise<void>((resolve, reject) => {
+    execFile('open', ['-a', appName], (error) => {
+      if (error) {
+        reject(error)
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
 function ensureAccessibilityPermission() {
   if (process.platform !== 'darwin') {
     return true
@@ -181,8 +233,8 @@ function ensureAccessibilityPermission() {
   dialog.showMessageBox({
     type: 'warning',
     title: '需要辅助功能权限',
-    message: '需要给“飞书录音纪要/Electron”开启辅助功能权限，才能自动点击飞书里的录音按钮。',
-    detail: '打开后请在“系统设置 > 隐私与安全性 > 辅助功能”里勾选这个应用，然后退出并重新打开飞书录音纪要。'
+    message: '需要给“浮点启动台/Electron”开启辅助功能权限，才能自动点击桌面应用里的按钮。',
+    detail: '打开后请在“系统设置 > 隐私与安全性 > 辅助功能”里勾选这个应用，然后退出并重新打开浮点启动台。'
   })
 
   return false
@@ -247,6 +299,79 @@ async function startFeishuRecording() {
   clickFeishuRecordButton()
 }
 
+function normalizeShortcuts(value: unknown): Shortcut[] {
+  if (!Array.isArray(value)) {
+    return DEFAULT_SHORTCUTS
+  }
+
+  const shortcuts = value
+    .filter((item): item is Shortcut => {
+      if (!item || typeof item !== 'object') return false
+      const maybeShortcut = item as Partial<Shortcut>
+      return Boolean(maybeShortcut.id && maybeShortcut.name && maybeShortcut.kind)
+    })
+    .map((shortcut) => ({
+      id: String(shortcut.id),
+      name: String(shortcut.name),
+      kind: shortcut.kind,
+      target: String(shortcut.target ?? ''),
+      accent: String(shortcut.accent || '#3370ff'),
+      symbol: String(shortcut.symbol || 'bolt'),
+      enabled: shortcut.enabled !== false
+    }))
+    .filter((shortcut) => ['feishu-record', 'url', 'app'].includes(shortcut.kind))
+
+  return shortcuts.length > 0 ? shortcuts : DEFAULT_SHORTCUTS
+}
+
+function getShortcuts() {
+  return normalizeShortcuts(store.get('shortcuts'))
+}
+
+function saveShortcuts(shortcuts: unknown) {
+  const normalizedShortcuts = normalizeShortcuts(shortcuts)
+  store.set('shortcuts', normalizedShortcuts)
+
+  const activeShortcutId = store.get('activeShortcutId') as string | undefined
+  if (!activeShortcutId || !normalizedShortcuts.some((shortcut) => shortcut.id === activeShortcutId)) {
+    store.set('activeShortcutId', normalizedShortcuts[0].id)
+  }
+
+  return normalizedShortcuts
+}
+
+function getActiveShortcutId() {
+  const shortcuts = getShortcuts()
+  const storedShortcutId = store.get('activeShortcutId') as string | undefined
+  const activeShortcut = shortcuts.find((shortcut) => shortcut.id === storedShortcutId && shortcut.enabled)
+    ?? shortcuts.find((shortcut) => shortcut.enabled)
+    ?? shortcuts[0]
+
+  return activeShortcut.id
+}
+
+async function executeShortcut(shortcutId?: string) {
+  const shortcuts = getShortcuts()
+  const activeShortcutId = shortcutId || getActiveShortcutId()
+  const shortcut = shortcuts.find((item) => item.id === activeShortcutId) ?? shortcuts[0]
+
+  if (!shortcut || shortcut.enabled === false) {
+    return
+  }
+
+  if (shortcut.kind === 'feishu-record') {
+    await startFeishuRecording()
+    return
+  }
+
+  if (shortcut.kind === 'app') {
+    await openMacApp(shortcut.target)
+    return
+  }
+
+  await shell.openExternal(shortcut.target)
+}
+
 function createAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
@@ -262,6 +387,16 @@ function createAppMenu() {
               createFloatingWindow()
             }
           }
+        },
+        {
+          label: '打开配置面板',
+          accelerator: 'Command+,',
+          click: () => showMainWindow()
+        },
+        {
+          label: '执行当前快捷项',
+          accelerator: 'Command+Return',
+          click: () => executeShortcut()
         },
         {
           label: '隐藏悬浮按钮',
@@ -287,12 +422,37 @@ app.whenReady().then(() => {
   }
 
   createFloatingWindow()
+  createMainWindow()
   createTray()
   createAppMenu()
 
-  // IPC处理程序
   ipcMain.handle('open-feishu-meeting', async () => {
     await startFeishuRecording()
+  })
+
+  ipcMain.handle('shortcuts:get', async () => getShortcuts())
+
+  ipcMain.handle('shortcuts:save', async (_event, shortcuts) => saveShortcuts(shortcuts))
+
+  ipcMain.handle('shortcut:execute', async (_event, shortcutId?: string) => {
+    await executeShortcut(shortcutId)
+  })
+
+  ipcMain.handle('shortcut:set-active', async (_event, shortcutId: string) => {
+    const shortcuts = getShortcuts()
+    const shortcut = shortcuts.find((item) => item.id === shortcutId)
+    if (shortcut) {
+      store.set('activeShortcutId', shortcut.id)
+      return shortcut.id
+    }
+
+    return getActiveShortcutId()
+  })
+
+  ipcMain.handle('shortcut:get-active', async () => getActiveShortcutId())
+
+  ipcMain.handle('open-main-window', async () => {
+    showMainWindow()
   })
 
   ipcMain.handle('minimize-window', async () => {
@@ -348,6 +508,9 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createFloatingWindow()
+      createMainWindow()
+    } else {
+      showMainWindow()
     }
   })
 })

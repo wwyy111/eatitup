@@ -1,99 +1,241 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
+import { DEFAULT_SHORTCUTS, SHORTCUT_KIND_LABEL, type Shortcut, type ShortcutKind } from './shortcuts'
+
+const colorOptions = ['#3370ff', '#22c55e', '#ff4d4f', '#f59e0b', '#7c3aed', '#0f766e']
+const symbolOptions = ['rec', 'doc', 'bolt', 'app', 'link', 'spark']
+
+const emptyDraft = {
+  name: '',
+  kind: 'url' as ShortcutKind,
+  target: '',
+  accent: colorOptions[0],
+  symbol: 'bolt'
+}
+
+function createShortcutId(name: string) {
+  const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+  return `${cleanName || 'shortcut'}-${Date.now().toString(36)}`
+}
 
 const MainWindow = () => {
-  const [isOpening, setIsOpening] = useState(false)
+  const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS)
+  const [activeShortcutId, setActiveShortcutId] = useState(DEFAULT_SHORTCUTS[0].id)
+  const [draft, setDraft] = useState(emptyDraft)
+  const [isSaving, setIsSaving] = useState(false)
 
-  const handleOpenFeishu = async () => {
-    if (isOpening) return
+  const activeShortcut = useMemo(
+    () => shortcuts.find((shortcut) => shortcut.id === activeShortcutId) ?? shortcuts[0],
+    [activeShortcutId, shortcuts]
+  )
 
-    setIsOpening(true)
+  useEffect(() => {
+    let isMounted = true
 
-    if (window.electronAPI) {
-      try {
-        await window.electronAPI.openFeishuMeeting()
-      } catch (error) {
-        console.error('打开飞书失败:', error)
-        window.open('https://www.feishu.cn/meeting/minutes', '_blank')
-      }
-    } else {
-      window.open('https://www.feishu.cn/meeting/minutes', '_blank')
+    async function loadShortcuts() {
+      const [storedShortcuts, storedActiveShortcutId] = await Promise.all([
+        window.electronAPI?.getShortcuts() ?? Promise.resolve(DEFAULT_SHORTCUTS),
+        window.electronAPI?.getActiveShortcut() ?? Promise.resolve(DEFAULT_SHORTCUTS[0].id)
+      ])
+
+      if (!isMounted) return
+      setShortcuts(storedShortcuts)
+      setActiveShortcutId(storedActiveShortcutId)
     }
 
-    setTimeout(() => setIsOpening(false), 2000)
+    loadShortcuts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const persistShortcuts = async (nextShortcuts: Shortcut[]) => {
+    setIsSaving(true)
+    const savedShortcuts = await window.electronAPI?.saveShortcuts(nextShortcuts)
+    setShortcuts(savedShortcuts ?? nextShortcuts)
+    setIsSaving(false)
+  }
+
+  const handleAddShortcut = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const name = draft.name.trim()
+    const target = draft.kind === 'feishu-record' ? 'FEISHU_MINUTES_HOME_URL' : draft.target.trim()
+    if (!name || !target) return
+
+    const nextShortcut: Shortcut = {
+      id: createShortcutId(name),
+      name,
+      kind: draft.kind,
+      target,
+      accent: draft.accent,
+      symbol: draft.symbol,
+      enabled: true
+    }
+
+    await persistShortcuts([...shortcuts, nextShortcut])
+    setDraft(emptyDraft)
+  }
+
+  const handleSetActiveShortcut = async (shortcutId: string) => {
+    setActiveShortcutId(shortcutId)
+    await window.electronAPI?.setActiveShortcut(shortcutId)
+  }
+
+  const handleToggleShortcut = async (shortcutId: string) => {
+    const nextShortcuts = shortcuts.map((shortcut) => {
+      if (shortcut.id !== shortcutId) return shortcut
+      return { ...shortcut, enabled: !shortcut.enabled }
+    })
+
+    await persistShortcuts(nextShortcuts)
+  }
+
+  const handleRunShortcut = async (shortcutId: string) => {
+    await window.electronAPI?.executeShortcut(shortcutId)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        {/* 主卡片 */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-          {/* 应用图标 */}
-          <div className="mx-auto mb-6 w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <svg
-              width="40"
-              height="40"
-              viewBox="0 0 40 40"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <rect width="40" height="40" rx="10" fill="white"/>
-              <path d="M10 12.5h20v15H10z" fill="#3370ff"/>
-              <path d="M12.5 15h7.5v2.5h-7.5z" fill="white"/>
-              <path d="M12.5 20h10v2.5h-10z" fill="white"/>
-              <circle cx="27.5" cy="27.5" r="7.5" fill="#ff4d4f"/>
-              <path d="M25 27.5h5" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
+    <main className="launcher-shell">
+      <aside className="launcher-sidebar">
+        <div className="brand-mark" aria-hidden="true">浮</div>
+        <div>
+          <h1>浮点启动台</h1>
+          <p>把常用入口收进一个可切换的悬浮球。</p>
+        </div>
+      </aside>
+
+      <section className="launcher-content">
+        <div className="launcher-toolbar">
+          <div>
+            <span className="eyebrow">当前快捷项</span>
+            <h2>{activeShortcut?.name ?? '未选择'}</h2>
           </div>
-
-          {/* 标题 */}
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">
-            飞书录音纪要
-          </h1>
-          <p className="text-gray-600 mb-8">
-            快速访问飞书会议纪要，开启高效录音记录
-          </p>
-
-          {/* 主要按钮 */}
           <button
-            onClick={handleOpenFeishu}
-            disabled={isOpening}
-            className={`w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
-              isOpening ? 'animate-pulse' : ''
-            }`}
+            className="primary-action"
+            type="button"
+            onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}
           >
-            {isOpening ? '正在打开...' : '打开飞书纪要'}
+            启动
           </button>
+        </div>
 
-          {/* 快捷提示 */}
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">快捷提示</h3>
-            <div className="space-y-2 text-left text-sm text-gray-600">
-              <div className="flex items-start">
-                <span className="text-blue-500 mr-2">•</span>
-                <span>点击悬浮按钮快速打开飞书会议纪要</span>
-              </div>
-              <div className="flex items-start">
-                <span className="text-blue-500 mr-2">•</span>
-                <span>拖拽按钮调整屏幕位置</span>
-              </div>
-              <div className="flex items-start">
-                <span className="text-blue-500 mr-2">•</span>
-                <span>使用飞书内置录音功能记录会议</span>
-              </div>
-              <div className="flex items-start">
-                <span className="text-blue-500 mr-2">•</span>
-                <span>右键托盘图标访问更多选项</span>
-              </div>
+        <div className="launcher-grid">
+          <section className="shortcut-panel">
+            <div className="section-heading">
+              <h3>快捷项</h3>
+              <span>{shortcuts.filter((shortcut) => shortcut.enabled).length} 个启用</span>
             </div>
-          </div>
-        </div>
 
-        {/* 版权信息 */}
-        <div className="text-center mt-6 text-sm text-gray-500">
-          <p>© 2024 飞书录音纪要助手</p>
+            <div className="shortcut-list">
+              {shortcuts.map((shortcut) => (
+                <article
+                  className={`shortcut-row ${shortcut.id === activeShortcutId ? 'is-active' : ''}`}
+                  key={shortcut.id}
+                  style={{ '--accent': shortcut.accent } as CSSProperties}
+                >
+                  <button
+                    className="shortcut-identity"
+                    type="button"
+                    onClick={() => handleSetActiveShortcut(shortcut.id)}
+                  >
+                    <span className="shortcut-icon">{shortcut.symbol.slice(0, 2)}</span>
+                    <span>
+                      <strong>{shortcut.name}</strong>
+                      <small>{SHORTCUT_KIND_LABEL[shortcut.kind]} · {shortcut.target}</small>
+                    </span>
+                  </button>
+
+                  <div className="shortcut-actions">
+                    <button type="button" onClick={() => handleRunShortcut(shortcut.id)}>运行</button>
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={shortcut.enabled}
+                        onChange={() => handleToggleShortcut(shortcut.id)}
+                      />
+                      <span />
+                    </label>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="config-panel">
+            <div className="section-heading">
+              <h3>添加入口</h3>
+              <span>{isSaving ? '保存中' : '本地保存'}</span>
+            </div>
+
+            <form className="shortcut-form" onSubmit={handleAddShortcut}>
+              <label>
+                名称
+                <input
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  placeholder="例如：Notion 工作台"
+                />
+              </label>
+
+              <label>
+                类型
+                <select
+                  value={draft.kind}
+                  onChange={(event) => setDraft({ ...draft, kind: event.target.value as ShortcutKind })}
+                >
+                  <option value="url">网页/平台链接</option>
+                  <option value="app">本机 App</option>
+                  <option value="feishu-record">飞书妙记录音</option>
+                </select>
+              </label>
+
+              {draft.kind !== 'feishu-record' && (
+                <label>
+                  {draft.kind === 'app' ? 'App 名称' : '链接'}
+                  <input
+                    value={draft.target}
+                    onChange={(event) => setDraft({ ...draft, target: event.target.value })}
+                    placeholder={draft.kind === 'app' ? '例如：Notion' : 'https://...'}
+                  />
+                </label>
+              )}
+
+              <div className="swatch-group" aria-label="颜色">
+                {colorOptions.map((color) => (
+                  <button
+                    key={color}
+                    className={draft.accent === color ? 'is-selected' : ''}
+                    style={{ background: color }}
+                    type="button"
+                    onClick={() => setDraft({ ...draft, accent: color })}
+                    aria-label={color}
+                  />
+                ))}
+              </div>
+
+              <div className="symbol-grid">
+                {symbolOptions.map((symbol) => (
+                  <button
+                    key={symbol}
+                    className={draft.symbol === symbol ? 'is-selected' : ''}
+                    type="button"
+                    onClick={() => setDraft({ ...draft, symbol })}
+                  >
+                    {symbol}
+                  </button>
+                ))}
+              </div>
+
+              <button className="primary-action" type="submit">
+                添加快捷项
+              </button>
+            </form>
+          </section>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   )
 }
 

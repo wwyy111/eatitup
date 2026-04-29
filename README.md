@@ -1,14 +1,14 @@
-# Feishu Recorder Floating Button
+# Float Launcher
 
-An Electron + React floating desktop button for opening Feishu/Lark Minutes and starting a recording through macOS desktop automation.
+An Electron + React floating shortcut launcher. It ships with a Feishu Minutes recording action, and can also launch websites/platforms or local macOS apps from the same floating button.
 
 ## Features
 
 - Always-on-top floating button
-- Saves the floating button position
-- Opens Feishu/Lark Minutes through AppLink
-- Uses macOS Accessibility automation to click the recording button
-- System tray controls
+- Switch active shortcuts from the floating control
+- Configure shortcuts in a graphical desktop panel
+- Supports Feishu Minutes recording, web links, and local app launch
+- Saves shortcut configuration and floating button position locally
 
 ## Setup
 
@@ -32,14 +32,14 @@ npm run build
 
 ## macOS Permissions
 
-Automatic recording uses AppleScript and macOS Accessibility. Enable permissions for the app or terminal used to launch it:
+Feishu recording uses AppleScript and macOS Accessibility. Enable permissions for the app or terminal used to launch it:
 
 ```text
 System Settings -> Privacy & Security -> Accessibility
 ```
 
 In the current development launcher, the item macOS asks you to allow is usually `Electron`.
-After enabling it, quit and reopen `飞书录音纪要`.
+After enabling it, quit and reopen the app.
 
 You may also need to allow automation access to System Events and Lark/Feishu:
 

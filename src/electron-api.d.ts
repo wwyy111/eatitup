@@ -1,9 +1,17 @@
+import type { Shortcut } from './shortcuts'
+
 export {}
 
 declare global {
   interface Window {
     electronAPI?: {
+      getShortcuts: () => Promise<Shortcut[]>
+      saveShortcuts: (shortcuts: Shortcut[]) => Promise<Shortcut[]>
+      executeShortcut: (shortcutId?: string) => Promise<void>
+      setActiveShortcut: (shortcutId: string) => Promise<string>
+      getActiveShortcut: () => Promise<string>
       openFeishuMeeting: () => Promise<void>
+      openMainWindow: () => Promise<void>
       minimizeWindow: () => Promise<void>
       maximizeWindow: () => Promise<void>
       closeWindow: () => Promise<void>

@@ -1,7 +1,7 @@
 {
-  "name": "feishu-recorder",
+  "name": "float-launcher",
   "version": "1.0.0",
-  "description": "飞书录音纪要悬浮按钮应用",
+  "description": "可配置的悬浮快捷启动台",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -31,8 +31,8 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.feishu.recorder",
-    "productName": "飞书录音纪要",
+    "appId": "com.float.launcher",
+    "productName": "浮点启动台",
     "directories": {
       "output": "release"
     },

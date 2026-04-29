@@ -1,13 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // 打开飞书页面
+  getShortcuts: () => ipcRenderer.invoke('shortcuts:get'),
+  saveShortcuts: (shortcuts: unknown) => ipcRenderer.invoke('shortcuts:save', shortcuts),
+  executeShortcut: (shortcutId?: string) => ipcRenderer.invoke('shortcut:execute', shortcutId),
+  setActiveShortcut: (shortcutId: string) => ipcRenderer.invoke('shortcut:set-active', shortcutId),
+  getActiveShortcut: () => ipcRenderer.invoke('shortcut:get-active'),
   openFeishuMeeting: () => ipcRenderer.invoke('open-feishu-meeting'),
-  // 窗口控制
+  openMainWindow: () => ipcRenderer.invoke('open-main-window'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
-  // 拖拽相关
   startFloatingDrag: (pointerPosition: { x: number; y: number }) => {
     ipcRenderer.send('floating-drag-start', pointerPosition)
   },
