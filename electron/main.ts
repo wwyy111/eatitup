@@ -138,14 +138,14 @@ async function openFeishuMeeting() {
 
   if (process.platform === 'darwin') {
     try {
-      await openUrlWithMacApp('Lark', FEISHU_MINUTES_HOME_URL)
+      await openUrlWithMacApp('Lark', feishuAppLink)
       return
     } catch (error) {
       console.error('使用 Lark 打开妙记失败:', error)
     }
 
     try {
-      await openUrlWithMacApp('飞书', FEISHU_MINUTES_HOME_URL)
+      await openUrlWithMacApp('飞书', feishuAppLink)
       return
     } catch (error) {
       console.error('使用飞书打开妙记失败:', error)
@@ -173,8 +173,44 @@ function clickFeishuRecordButton() {
   }
 
   const script = `
-tell application "Lark" to activate
-delay 2.5
+on firstElementContainingText(rootElement, targetText)
+  tell application "System Events"
+    try
+      set elementName to name of rootElement as text
+      if elementName contains targetText then return rootElement
+    end try
+
+    try
+      set elementDescription to description of rootElement as text
+      if elementDescription contains targetText then return rootElement
+    end try
+
+    try
+      repeat with childElement in UI elements of rootElement
+        set foundElement to my firstElementContainingText(childElement, targetText)
+        if foundElement is not missing value then return foundElement
+      end repeat
+    end try
+  end tell
+
+  return missing value
+end firstElementContainingText
+
+on clickFirstElementContainingText(rootElement, targetText)
+  set foundElement to my firstElementContainingText(rootElement, targetText)
+  if foundElement is not missing value then
+    tell application "System Events" to click foundElement
+    return true
+  end if
+
+  return false
+end clickFirstElementContainingText
+
+on pageContainsText(rootElement, targetText)
+  set foundElement to my firstElementContainingText(rootElement, targetText)
+  return foundElement is not missing value
+end pageContainsText
+
 tell application "System Events"
   set targetProcess to missing value
   repeat with processName in {"飞书", "Lark", "Feishu"}
@@ -188,14 +224,31 @@ tell application "System Events"
 
   tell targetProcess
     set frontmost to true
-    delay 0.3
-    set windowPosition to position of front window
-    set windowSize to size of front window
-    set clickX to (item 1 of windowPosition) + (item 1 of windowSize) - 270
-    set clickY to (item 2 of windowPosition) + 145
   end tell
 
-  click at {clickX, clickY}
+  delay 0.8
+
+  repeat 6 times
+    if my pageContainsText(front window of targetProcess, "录音中") then return
+
+    if my pageContainsText(front window of targetProcess, "飞书妙记") then
+      exit repeat
+    end if
+
+    my clickFirstElementContainingText(front window of targetProcess, "飞书妙记")
+    delay 0.7
+  end repeat
+
+  repeat 8 times
+    if my pageContainsText(front window of targetProcess, "录音中") then return
+
+    if my clickFirstElementContainingText(front window of targetProcess, "录音") then return
+
+    my clickFirstElementContainingText(front window of targetProcess, "飞书妙记")
+    delay 0.7
+  end repeat
+
+  error "没有找到飞书妙记的录音按钮"
 end tell
 `
 
