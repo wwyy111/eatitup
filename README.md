@@ -38,6 +38,9 @@ Automatic recording uses AppleScript and macOS Accessibility. Enable permissions
 System Settings -> Privacy & Security -> Accessibility
 ```
 
+In the current development launcher, the item macOS asks you to allow is usually `Electron`.
+After enabling it, quit and reopen `飞书录音纪要`.
+
 You may also need to allow automation access to System Events and Lark/Feishu:
 
 ```text

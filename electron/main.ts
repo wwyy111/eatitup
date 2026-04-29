@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, ipcMain, screen, systemPreferences, dialog } from 'electron'
 import { execFile } from 'child_process'
 import * as path from 'path'
 import Store from 'electron-store'
@@ -167,50 +167,33 @@ function openUrlWithMacApp(appName: string, url: string) {
   })
 }
 
+function ensureAccessibilityPermission() {
+  if (process.platform !== 'darwin') {
+    return true
+  }
+
+  const hasPermission = systemPreferences.isTrustedAccessibilityClient(false)
+  if (hasPermission) {
+    return true
+  }
+
+  systemPreferences.isTrustedAccessibilityClient(true)
+  dialog.showMessageBox({
+    type: 'warning',
+    title: '需要辅助功能权限',
+    message: '需要给“飞书录音纪要/Electron”开启辅助功能权限，才能自动点击飞书里的录音按钮。',
+    detail: '打开后请在“系统设置 > 隐私与安全性 > 辅助功能”里勾选这个应用，然后退出并重新打开飞书录音纪要。'
+  })
+
+  return false
+}
+
 function clickFeishuRecordButton() {
   if (process.platform !== 'darwin') {
     return
   }
 
   const script = `
-on firstElementContainingText(rootElement, targetText)
-  tell application "System Events"
-    try
-      set elementName to name of rootElement as text
-      if elementName contains targetText then return rootElement
-    end try
-
-    try
-      set elementDescription to description of rootElement as text
-      if elementDescription contains targetText then return rootElement
-    end try
-
-    try
-      repeat with childElement in UI elements of rootElement
-        set foundElement to my firstElementContainingText(childElement, targetText)
-        if foundElement is not missing value then return foundElement
-      end repeat
-    end try
-  end tell
-
-  return missing value
-end firstElementContainingText
-
-on clickFirstElementContainingText(rootElement, targetText)
-  set foundElement to my firstElementContainingText(rootElement, targetText)
-  if foundElement is not missing value then
-    tell application "System Events" to click foundElement
-    return true
-  end if
-
-  return false
-end clickFirstElementContainingText
-
-on pageContainsText(rootElement, targetText)
-  set foundElement to my firstElementContainingText(rootElement, targetText)
-  return foundElement is not missing value
-end pageContainsText
-
 on clickRecordByCoordinate(targetProcess)
   tell application "System Events"
     tell targetProcess
@@ -223,20 +206,6 @@ on clickRecordByCoordinate(targetProcess)
     click at {clickX, clickY}
   end tell
 end clickRecordByCoordinate
-
-on tryStartRecording(targetProcess)
-  tell application "System Events"
-    if my pageContainsText(front window of targetProcess, "录音中") then return true
-
-    my clickFirstElementContainingText(front window of targetProcess, "录音")
-    delay 0.8
-    if my pageContainsText(front window of targetProcess, "录音中") then return true
-
-    my clickRecordByCoordinate(targetProcess)
-    delay 1
-    return my pageContainsText(front window of targetProcess, "录音中")
-  end tell
-end tryStartRecording
 
 tell application "System Events"
   set targetProcess to missing value
@@ -255,27 +224,7 @@ tell application "System Events"
 
   delay 0.8
 
-  repeat 6 times
-    if my pageContainsText(front window of targetProcess, "录音中") then return
-
-    if my pageContainsText(front window of targetProcess, "飞书妙记") then
-      exit repeat
-    end if
-
-    my clickFirstElementContainingText(front window of targetProcess, "飞书妙记")
-    delay 0.7
-  end repeat
-
-  repeat 8 times
-    if my pageContainsText(front window of targetProcess, "录音中") then return
-
-    if my tryStartRecording(targetProcess) then return
-
-    my clickFirstElementContainingText(front window of targetProcess, "飞书妙记")
-    delay 0.7
-  end repeat
-
-  error "没有找到飞书妙记的录音按钮"
+  my clickRecordByCoordinate(targetProcess)
 end tell
 `
 
@@ -287,7 +236,13 @@ end tell
 }
 
 async function startFeishuRecording() {
+  if (!ensureAccessibilityPermission()) {
+    return
+  }
+
   await openFeishuMeeting()
+
+  await new Promise((resolve) => setTimeout(resolve, 3500))
 
   clickFeishuRecordButton()
 }
