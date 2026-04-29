@@ -30,8 +30,8 @@ function createFloatingWindow() {
   const savedPosition = store.get('windowPosition', { x: -1, y: -1 }) as { x: number; y: number }
 
   floatingWindow = new BrowserWindow({
-    width: 60,
-    height: 60,
+    width: 96,
+    height: 96,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -60,7 +60,7 @@ function createFloatingWindow() {
     // 默认位置：屏幕右上角
     const primaryDisplay = screen.getPrimaryDisplay()
     const { x, y, width } = primaryDisplay.workArea
-    floatingWindow.setPosition(x + width - 80, y + 20)
+    floatingWindow.setPosition(x + width - 116, y + 20)
   }
 
   floatingWindow.on('move', () => {

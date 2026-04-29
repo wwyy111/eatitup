@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react'
+import { type CSSProperties, useRef, useState } from 'react'
 
 const FloatingButton = () => {
   const [isDragging, setIsDragging] = useState(false)
-  const [showTooltip, setShowTooltip] = useState(false)
+  const [isHovering, setIsHovering] = useState(false)
+  const [isPressed, setIsPressed] = useState(false)
+  const [pointerOffset, setPointerOffset] = useState({ x: 0, y: 0 })
   const buttonRef = useRef<HTMLDivElement>(null)
   const pointerStartPos = useRef({ x: 0, y: 0 })
   const hasMoved = useRef(false)
@@ -30,11 +32,19 @@ const FloatingButton = () => {
     pointerStartPos.current = { x: e.screenX, y: e.screenY }
     hasMoved.current = false
     setIsDragging(true)
-    setShowTooltip(false)
+    setIsPressed(true)
     window.electronAPI?.startFloatingDrag({ x: e.screenX, y: e.screenY })
   }
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left - rect.width / 2
+    const y = e.clientY - rect.top - rect.height / 2
+    setPointerOffset({
+      x: Math.max(-18, Math.min(18, x)),
+      y: Math.max(-18, Math.min(18, y))
+    })
+
     if (!isDragging) return
 
     const dx = e.screenX - pointerStartPos.current.x
@@ -53,6 +63,7 @@ const FloatingButton = () => {
 
     e.currentTarget.releasePointerCapture(e.pointerId)
     setIsDragging(false)
+    setIsPressed(false)
     window.electronAPI?.endFloatingDrag()
 
     if (!hasMoved.current) {
@@ -60,57 +71,57 @@ const FloatingButton = () => {
     }
   }
 
+  const handlePointerLeave = () => {
+    if (!isDragging) {
+      setIsHovering(false)
+      setPointerOffset({ x: 0, y: 0 })
+    }
+  }
+
+  const dynamicStyle = {
+    '--mx': `${pointerOffset.x}px`,
+    '--my': `${pointerOffset.y}px`,
+    '--tilt-x': `${pointerOffset.y * -0.35}deg`,
+    '--tilt-y': `${pointerOffset.x * 0.35}deg`
+  } as CSSProperties
+
   return (
-    <div className="w-screen h-screen bg-transparent flex items-center justify-center">
+    <div className="floating-stage">
       <div
         ref={buttonRef}
-        className="floating-button-container"
+        className={[
+          'floating-button-container',
+          isHovering ? 'is-hovering' : '',
+          isDragging ? 'is-dragging' : '',
+          isPressed ? 'is-pressed' : ''
+        ].join(' ')}
+        style={dynamicStyle}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onMouseEnter={() => !isDragging && setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
+        onPointerEnter={() => !isDragging && setIsHovering(true)}
+        onPointerLeave={handlePointerLeave}
       >
-        {/* 飞书图标 */}
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 32 32"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <rect width="32" height="32" rx="8" fill="white"/>
-          <path
-            d="M8 10h16v12H8z"
-            fill="#3370ff"
-          />
-          <path
-            d="M10 12h6v2h-6z"
-            fill="white"
-          />
-          <path
-            d="M10 16h8v2h-8z"
-            fill="white"
-          />
-          <circle cx="22" cy="22" r="6" fill="#ff4d4f"/>
-          <path
-            d="M20 22h4"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-
-        {/* 工具提示 */}
-        {showTooltip && (
-          <div
-            className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap"
-            style={{ top: '50%', transform: 'translateY(-50%)' }}
+        <div className="floating-orbit" />
+        <div className="floating-glow" />
+        <div className="floating-face">
+          <svg
+            className="floating-icon"
+            width="34"
+            height="34"
+            viewBox="0 0 34 34"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
           >
-            点击打开飞书纪要
-          </div>
-        )}
+            <rect x="4" y="5" width="20" height="17" rx="4" fill="white" fillOpacity="0.96"/>
+            <path d="M9 10.5h10.5M9 15h8" stroke="#3370ff" strokeWidth="2" strokeLinecap="round"/>
+            <circle cx="23.5" cy="23.5" r="7.5" fill="#ff4d4f"/>
+            <path d="M23.5 19.8v6.4M20.3 23h6.4" stroke="white" strokeWidth="2.1" strokeLinecap="round"/>
+          </svg>
+          <span className="floating-pulse-dot" />
+        </div>
       </div>
     </div>
   )
