@@ -39,6 +39,7 @@ function createFloatingWindow() {
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
+    focusable: false,
     skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -227,7 +228,7 @@ function createHotkeyScript(hotkey: string) {
   const parts = hotkey
     .split('+')
     .map((part) => part.trim())
-    .filter(Boolean)
+    .filter((part) => part && !['fn', 'function'].includes(part.toLowerCase()))
 
   const key = parts.pop()
   if (!key) {
@@ -378,6 +379,22 @@ async function startFeishuRecording() {
   clickFeishuRecordButton()
 }
 
+function normalizeHotkeyTarget(name: string, target: string) {
+  const normalizedTarget = target.trim()
+  const lowerName = name.toLowerCase()
+  const lowerTarget = normalizedTarget.toLowerCase()
+
+  if (lowerTarget === 'fn+c' && (name.includes('复制') || lowerName.includes('copy'))) {
+    return 'Command+C'
+  }
+
+  if (lowerTarget === 'fn+v' && (name.includes('粘贴') || lowerName.includes('paste'))) {
+    return 'Command+V'
+  }
+
+  return normalizedTarget
+}
+
 function normalizeShortcuts(value: unknown): Shortcut[] {
   if (!Array.isArray(value)) {
     return DEFAULT_SHORTCUTS
@@ -389,15 +406,21 @@ function normalizeShortcuts(value: unknown): Shortcut[] {
       const maybeShortcut = item as Partial<Shortcut>
       return Boolean(maybeShortcut.id && maybeShortcut.name && maybeShortcut.kind)
     })
-    .map((shortcut) => ({
-      id: String(shortcut.id),
-      name: String(shortcut.name),
-      kind: shortcut.kind,
-      target: String(shortcut.target ?? ''),
-      accent: String(shortcut.accent || '#3370ff'),
-      symbol: String(shortcut.symbol || 'bolt'),
-      enabled: shortcut.enabled !== false
-    }))
+    .map((shortcut) => {
+      const name = String(shortcut.name)
+      const kind = shortcut.kind
+      const target = String(shortcut.target ?? '')
+
+      return {
+        id: String(shortcut.id),
+        name,
+        kind,
+        target: kind === 'hotkey' ? normalizeHotkeyTarget(name, target) : target,
+        accent: String(shortcut.accent || '#3370ff'),
+        symbol: String(shortcut.symbol || 'bolt'),
+        enabled: shortcut.enabled !== false
+      }
+    })
     .filter((shortcut) => ['feishu-record', 'url', 'app', 'hotkey'].includes(shortcut.kind))
 
   return shortcuts.length > 0 ? shortcuts : DEFAULT_SHORTCUTS

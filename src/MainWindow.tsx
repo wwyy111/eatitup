@@ -28,6 +28,11 @@ function createShortcutId(name: string) {
 function normalizeRecordedKey(key: string) {
   const keyMap: Record<string, string> = {
     ' ': 'Space',
+    Meta: 'Command',
+    OS: 'Command',
+    Super: 'Command',
+    Fn: '',
+    fn: '',
     ArrowUp: 'Up',
     ArrowDown: 'Down',
     ArrowLeft: 'Left',
@@ -142,7 +147,7 @@ const MainWindow = () => {
     event.preventDefault()
     event.stopPropagation()
 
-    if (['Meta', 'Shift', 'Alt', 'Control'].includes(event.key)) {
+    if (['Meta', 'OS', 'Super', 'Shift', 'Alt', 'Control', 'Fn', 'fn'].includes(event.key)) {
       return
     }
 

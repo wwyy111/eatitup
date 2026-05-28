@@ -173,7 +173,11 @@ const FloatingButton = () => {
               className={`hotkey-burst-item hotkey-burst-item-${index}`}
               style={{ '--accent': shortcut.accent } as CSSProperties}
               type="button"
-              onClick={() => window.electronAPI?.executeShortcut(shortcut.id)}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                window.electronAPI?.executeShortcut(shortcut.id)
+              }}
               title={`${shortcut.name}: ${shortcut.target}`}
             >
               {shortcut.symbol.slice(0, 2)}
@@ -199,7 +203,15 @@ const FloatingButton = () => {
         </div>
       )}
 
-      <button className="floating-config" type="button" onClick={() => window.electronAPI?.openMainWindow()}>
+      <button
+        className="floating-config"
+        type="button"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation()
+          window.electronAPI?.openMainWindow()
+        }}
+      >
         +
       </button>
     </div>
