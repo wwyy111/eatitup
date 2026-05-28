@@ -8,10 +8,13 @@ const store = new Store()
 const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://www.feishu.cn/minutes/home'
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const APP_NAME = '浮点启动台'
+const SELF_PROCESS_NAMES = new Set(['Electron', APP_NAME])
 
 let floatingWindow: BrowserWindow | null = null
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let frontmostTrackingTimer: NodeJS.Timeout | null = null
+let lastExternalAppName: string | null = null
 let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
@@ -224,7 +227,7 @@ function escapeAppleScriptText(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
-function createHotkeyScript(hotkey: string) {
+function createHotkeyScript(hotkey: string, targetAppName?: string | null) {
   const parts = hotkey
     .split('+')
     .map((part) => part.trim())
@@ -271,12 +274,20 @@ function createHotkeyScript(hotkey: string) {
 
   const usingClause = modifiers.length > 0 ? ` using {${modifiers.join(', ')}}` : ''
   const normalizedKey = key.toLowerCase()
+  const targetPrelude = targetAppName
+    ? `if exists process "${escapeAppleScriptText(targetAppName)}" then
+    set frontmost of process "${escapeAppleScriptText(targetAppName)}" to true
+    delay 0.08
+  end if
+  `
+    : ''
+  const keyCommand = keyCodeMap[normalizedKey]
+    ? `key code ${keyCodeMap[normalizedKey]}${usingClause}`
+    : `keystroke "${escapeAppleScriptText(key)}"${usingClause}`
 
-  if (keyCodeMap[normalizedKey]) {
-    return `tell application "System Events" to key code ${keyCodeMap[normalizedKey]}${usingClause}`
-  }
-
-  return `tell application "System Events" to keystroke "${escapeAppleScriptText(key)}"${usingClause}`
+  return `tell application "System Events"
+  ${targetPrelude}${keyCommand}
+end tell`
 }
 
 function sendHotkey(hotkey: string) {
@@ -289,7 +300,7 @@ function sendHotkey(hotkey: string) {
   }
 
   return new Promise<void>((resolve, reject) => {
-    execFile('osascript', ['-e', createHotkeyScript(hotkey)], (error) => {
+    execFile('osascript', ['-e', createHotkeyScript(hotkey, lastExternalAppName)], (error) => {
       if (error) {
         reject(error)
       } else {
@@ -297,6 +308,33 @@ function sendHotkey(hotkey: string) {
       }
     })
   })
+}
+
+function rememberFrontmostApp() {
+  if (process.platform !== 'darwin') {
+    return
+  }
+
+  execFile('osascript', ['-e', 'tell application "System Events" to get name of first application process whose frontmost is true'], (error, stdout) => {
+    if (error) {
+      return
+    }
+
+    const appName = stdout.trim()
+    if (appName && !SELF_PROCESS_NAMES.has(appName)) {
+      lastExternalAppName = appName
+    }
+  })
+}
+
+function startFrontmostTracking() {
+  if (process.platform !== 'darwin' || frontmostTrackingTimer) {
+    return
+  }
+
+  rememberFrontmostApp()
+  frontmostTrackingTimer = setInterval(rememberFrontmostApp, 800)
+  frontmostTrackingTimer.unref()
 }
 
 function ensureAccessibilityPermission() {
@@ -428,6 +466,11 @@ function normalizeShortcuts(value: unknown): Shortcut[] {
 
 function getShortcuts() {
   const shortcuts = normalizeShortcuts(store.get('shortcuts'))
+  const storedShortcuts = store.get('shortcuts')
+  if (JSON.stringify(storedShortcuts) !== JSON.stringify(shortcuts)) {
+    store.set('shortcuts', shortcuts)
+  }
+
   if (!store.get('hotkeyMigrationV1')) {
     const migratedShortcuts = shortcuts.some((shortcut) => shortcut.kind === 'hotkey')
       ? shortcuts
@@ -566,6 +609,7 @@ app.whenReady().then(() => {
   createMainWindow()
   createTray()
   createAppMenu()
+  startFrontmostTracking()
 
   ipcMain.handle('open-feishu-meeting', async () => {
     await startFeishuRecording()
@@ -650,11 +694,11 @@ app.whenReady().then(() => {
     dragState = null
   })
 
-  app.on('activate', () => {
+  app.on('activate', (_event, hasVisibleWindows) => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createFloatingWindow()
       createMainWindow()
-    } else {
+    } else if (!hasVisibleWindows) {
       showMainWindow()
     }
   })
@@ -669,6 +713,11 @@ app.on('window-all-closed', () => {
 
 // 应用退出前清理
 app.on('before-quit', () => {
+  if (frontmostTrackingTimer) {
+    clearInterval(frontmostTrackingTimer)
+    frontmostTrackingTimer = null
+  }
+
   if (tray) {
     tray.destroy()
   }
