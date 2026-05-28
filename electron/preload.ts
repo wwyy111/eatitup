@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveFloatingWindow: (pointerPosition: { x: number; y: number }) => {
     ipcRenderer.send('floating-drag-move', pointerPosition)
   },
-  endFloatingDrag: () => ipcRenderer.send('floating-drag-end')
+  endFloatingDrag: () => ipcRenderer.send('floating-drag-end'),
+  markFloatingInteraction: () => ipcRenderer.send('floating-interaction')
 })

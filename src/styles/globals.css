@@ -323,6 +323,16 @@ code {
   transition: opacity 160ms ease, transform 160ms ease;
 }
 
+.floating-config.is-hotkey-mode {
+  top: auto;
+  right: 16px;
+  bottom: 16px;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  line-height: 24px;
+}
+
 .launcher-shell {
   min-height: 100vh;
   display: grid;

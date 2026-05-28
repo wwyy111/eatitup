@@ -8,13 +8,14 @@ const store = new Store()
 const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://www.feishu.cn/minutes/home'
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const APP_NAME = '浮点启动台'
-const SELF_PROCESS_NAMES = new Set(['Electron', APP_NAME])
+const SELF_PROCESS_IDS = new Set([process.pid])
 
 let floatingWindow: BrowserWindow | null = null
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let frontmostTrackingTimer: NodeJS.Timeout | null = null
-let lastExternalAppName: string | null = null
+let lastExternalApp: { name: string; processId: number } | null = null
+let lastFloatingInteractionAt = 0
 let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
@@ -114,6 +115,22 @@ function showMainWindow() {
 
   mainWindow.show()
   mainWindow.focus()
+}
+
+function markFloatingInteraction() {
+  lastFloatingInteractionAt = Date.now()
+}
+
+function showMainWindowFromActivation() {
+  const activationStartedAt = Date.now()
+
+  setTimeout(() => {
+    if (lastFloatingInteractionAt >= activationStartedAt - 50) {
+      return
+    }
+
+    showMainWindow()
+  }, 140)
 }
 
 function getAssetPath(fileName: string) {
@@ -227,7 +244,7 @@ function escapeAppleScriptText(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
-function createHotkeyScript(hotkey: string, targetAppName?: string | null) {
+function createHotkeyScript(hotkey: string, targetApp?: { name: string; processId: number } | null) {
   const parts = hotkey
     .split('+')
     .map((part) => part.trim())
@@ -274,34 +291,41 @@ function createHotkeyScript(hotkey: string, targetAppName?: string | null) {
 
   const usingClause = modifiers.length > 0 ? ` using {${modifiers.join(', ')}}` : ''
   const normalizedKey = key.toLowerCase()
-  const targetPrelude = targetAppName
-    ? `if exists process "${escapeAppleScriptText(targetAppName)}" then
-    set frontmost of process "${escapeAppleScriptText(targetAppName)}" to true
+  const targetPrelude = targetApp
+    ? `set targetProcesses to application processes whose unix id is ${targetApp.processId}
+  if (count of targetProcesses) > 0 then
+    set frontmost of item 1 of targetProcesses to true
     delay 0.08
   end if
   `
     : ''
   const keyCommand = keyCodeMap[normalizedKey]
     ? `key code ${keyCodeMap[normalizedKey]}${usingClause}`
-    : `keystroke "${escapeAppleScriptText(key)}"${usingClause}`
+    : `keystroke "${escapeAppleScriptText(key.length === 1 ? key.toLowerCase() : key)}"${usingClause}`
 
   return `tell application "System Events"
   ${targetPrelude}${keyCommand}
 end tell`
 }
 
-function sendHotkey(hotkey: string) {
+async function sendHotkey(hotkey: string) {
   if (process.platform !== 'darwin') {
-    return Promise.resolve()
+    return
   }
 
   if (!ensureAccessibilityPermission()) {
-    return Promise.resolve()
+    return
   }
 
+  await rememberFrontmostAppNow()
+
   return new Promise<void>((resolve, reject) => {
-    execFile('osascript', ['-e', createHotkeyScript(hotkey, lastExternalAppName)], (error) => {
+    const targetApp = lastExternalApp
+    console.log(`发送快捷键: ${hotkey}${targetApp ? ` -> ${targetApp.name} (${targetApp.processId})` : ''}`)
+
+    execFile('osascript', ['-e', createHotkeyScript(hotkey, targetApp)], (error) => {
       if (error) {
+        console.error('发送快捷键失败:', error)
         reject(error)
       } else {
         resolve()
@@ -310,21 +334,38 @@ function sendHotkey(hotkey: string) {
   })
 }
 
-function rememberFrontmostApp() {
+function updateLastExternalAppFromOutput(stdout: string) {
+  const [appName, rawProcessId] = stdout.trim().split(/\r?\n/).map((part) => part.trim())
+  const processId = Number(rawProcessId)
+  if (appName && Number.isFinite(processId) && !SELF_PROCESS_IDS.has(processId)) {
+    lastExternalApp = { name: appName, processId }
+  }
+}
+
+function createFrontmostAppScript() {
+  return `tell application "System Events"
+  set frontApp to first application process whose frontmost is true
+  return (name of frontApp) & linefeed & ((unix id of frontApp) as text)
+end tell`
+}
+
+function rememberFrontmostAppNow() {
   if (process.platform !== 'darwin') {
-    return
+    return Promise.resolve()
   }
 
-  execFile('osascript', ['-e', 'tell application "System Events" to get name of first application process whose frontmost is true'], (error, stdout) => {
-    if (error) {
-      return
-    }
-
-    const appName = stdout.trim()
-    if (appName && !SELF_PROCESS_NAMES.has(appName)) {
-      lastExternalAppName = appName
-    }
+  return new Promise<void>((resolve) => {
+    execFile('osascript', ['-e', createFrontmostAppScript()], (error, stdout) => {
+      if (!error) {
+        updateLastExternalAppFromOutput(stdout)
+      }
+      resolve()
+    })
   })
+}
+
+function rememberFrontmostApp() {
+  void rememberFrontmostAppNow()
 }
 
 function startFrontmostTracking() {
@@ -333,7 +374,7 @@ function startFrontmostTracking() {
   }
 
   rememberFrontmostApp()
-  frontmostTrackingTimer = setInterval(rememberFrontmostApp, 800)
+  frontmostTrackingTimer = setInterval(rememberFrontmostApp, 300)
   frontmostTrackingTimer.unref()
 }
 
@@ -620,7 +661,12 @@ app.whenReady().then(() => {
   ipcMain.handle('shortcuts:save', async (_event, shortcuts) => saveShortcuts(shortcuts))
 
   ipcMain.handle('shortcut:execute', async (_event, shortcutId?: string) => {
-    await executeShortcut(shortcutId)
+    try {
+      await executeShortcut(shortcutId)
+    } catch (error) {
+      console.error('执行快捷项失败:', error)
+      throw error
+    }
   })
 
   ipcMain.handle('shortcut:set-active', async (_event, shortcutId: string) => {
@@ -642,6 +688,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('open-main-window', async () => {
     showMainWindow()
+  })
+
+  ipcMain.on('floating-interaction', () => {
+    markFloatingInteraction()
   })
 
   ipcMain.handle('minimize-window', async () => {
@@ -669,6 +719,7 @@ app.whenReady().then(() => {
   ipcMain.on('floating-drag-start', (_event, pointerPosition: { x: number; y: number }) => {
     if (!floatingWindow) return
 
+    markFloatingInteraction()
     dragState = {
       windowStartPosition: floatingWindow.getPosition() as [number, number],
       pointerStartPosition: pointerPosition
@@ -694,12 +745,12 @@ app.whenReady().then(() => {
     dragState = null
   })
 
-  app.on('activate', (_event, hasVisibleWindows) => {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createFloatingWindow()
       createMainWindow()
-    } else if (!hasVisibleWindows) {
-      showMainWindow()
+    } else {
+      showMainWindowFromActivation()
     }
   })
 })

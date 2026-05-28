@@ -73,6 +73,7 @@ const FloatingButton = () => {
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
 
+    window.electronAPI?.markFloatingInteraction()
     event.currentTarget.setPointerCapture(event.pointerId)
     pointerStartPos.current = { x: event.screenX, y: event.screenY }
     hasMoved.current = false
@@ -138,6 +139,18 @@ const FloatingButton = () => {
     .replace(/Control/g, '⌃')
     .replace(/\+/g, '')
 
+  const handleHotkeyButtonPointerUp = (event: PointerEvent<HTMLButtonElement>, shortcutId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    window.electronAPI?.executeShortcut(shortcutId)
+  }
+
+  const handleConfigPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    window.electronAPI?.openMainWindow()
+  }
+
   return (
     <div
       className={`floating-stage ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
@@ -180,11 +193,11 @@ const FloatingButton = () => {
               className="hotkey-burst-item"
               style={{ '--accent': shortcut.accent } as CSSProperties}
               type="button"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
+              onPointerDown={(event) => {
                 event.stopPropagation()
-                window.electronAPI?.executeShortcut(shortcut.id)
+                window.electronAPI?.markFloatingInteraction()
               }}
+              onPointerUp={(event) => handleHotkeyButtonPointerUp(event, shortcut.id)}
               title={`${shortcut.name}: ${shortcut.target}`}
             >
               <span>{shortcut.name}</span>
@@ -211,19 +224,18 @@ const FloatingButton = () => {
         </div>
       )}
 
-      {launcherMode === 'launch' && (
-        <button
-          className="floating-config"
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            window.electronAPI?.openMainWindow()
-          }}
-        >
-          +
-        </button>
-      )}
+      <button
+        className={`floating-config ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
+        type="button"
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          window.electronAPI?.markFloatingInteraction()
+        }}
+        onPointerUp={handleConfigPointerUp}
+        title="打开配置面板"
+      >
+        {launcherMode === 'hotkey' ? '⚙' : '+'}
+      </button>
     </div>
   )
 }
