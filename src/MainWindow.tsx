@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CSSProperties, FormEvent } from 'react'
+import type { CSSProperties, FormEvent, KeyboardEvent } from 'react'
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUT_KIND_LABEL,
@@ -9,7 +9,7 @@ import {
 } from './shortcuts'
 
 const colorOptions = ['#3370ff', '#22c55e', '#ff4d4f', '#f59e0b', '#7c3aed', '#0f766e']
-const symbolOptions = ['rec', 'doc', 'bolt', 'app', 'link', 'spark']
+const symbolOptions = ['rec', 'doc', 'bolt', 'app', 'link', 'key', 'spark']
 
 const emptyDraft = {
   name: '',
@@ -23,6 +23,32 @@ const emptyDraft = {
 function createShortcutId(name: string) {
   const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
   return `${cleanName || 'shortcut'}-${Date.now().toString(36)}`
+}
+
+function normalizeRecordedKey(key: string) {
+  const keyMap: Record<string, string> = {
+    ' ': 'Space',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    Escape: 'Escape',
+    Enter: 'Return',
+    Backspace: 'Delete'
+  }
+
+  if (keyMap[key]) return keyMap[key]
+  if (key.length === 1) return key.toUpperCase()
+  return key
+}
+
+function formatHotkeyForDisplay(hotkey: string) {
+  return hotkey
+    .replace(/Command/g, '⌘')
+    .replace(/Shift/g, '⇧')
+    .replace(/Option/g, '⌥')
+    .replace(/Control/g, '⌃')
+    .replace(/\+/g, ' ')
 }
 
 const MainWindow = () => {
@@ -110,6 +136,25 @@ const MainWindow = () => {
   const handleSetLauncherMode = async (mode: LauncherMode) => {
     setLauncherMode(mode)
     await window.electronAPI?.setLauncherMode(mode)
+  }
+
+  const handleRecordHotkey = (event: KeyboardEvent<HTMLInputElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (['Meta', 'Shift', 'Alt', 'Control'].includes(event.key)) {
+      return
+    }
+
+    const parts = [
+      event.metaKey ? 'Command' : '',
+      event.ctrlKey ? 'Control' : '',
+      event.altKey ? 'Option' : '',
+      event.shiftKey ? 'Shift' : '',
+      normalizeRecordedKey(event.key)
+    ].filter(Boolean)
+
+    setDraft({ ...draft, target: parts.join('+'), symbol: draft.symbol === 'bolt' ? 'key' : draft.symbol })
   }
 
   return (
@@ -225,20 +270,30 @@ const MainWindow = () => {
                 </select>
               </label>
 
-              <label>
-                {draft.kind === 'app' ? 'App 名称' : draft.kind === 'hotkey' ? '快捷键组合' : '链接'}
-                <input
-                  value={draft.target}
-                  onChange={(event) => setDraft({ ...draft, target: event.target.value })}
-                  placeholder={
-                    draft.kind === 'app'
-                      ? '例如：Notion'
-                      : draft.kind === 'hotkey'
-                        ? '例如：Command+Shift+4'
-                        : 'https://...'
-                  }
-                />
-              </label>
+              {draft.kind === 'hotkey' ? (
+                <label>
+                  快捷键组合
+                  <input
+                    className="hotkey-recorder"
+                    value={draft.target ? formatHotkeyForDisplay(draft.target) : ''}
+                    onKeyDown={handleRecordHotkey}
+                    onChange={() => undefined}
+                    onFocus={(event) => event.currentTarget.select()}
+                    placeholder="点这里，然后直接按下快捷键"
+                    readOnly
+                  />
+                  <small className="field-hint">录制时不会触发这个快捷键，只会保存组合。</small>
+                </label>
+              ) : (
+                <label>
+                  {draft.kind === 'app' ? 'App 名称' : '链接'}
+                  <input
+                    value={draft.target}
+                    onChange={(event) => setDraft({ ...draft, target: event.target.value })}
+                    placeholder={draft.kind === 'app' ? '例如：Notion' : 'https://...'}
+                  />
+                </label>
+              )}
 
               {draft.kind === 'url' && (
                 <details className="advanced-settings">
