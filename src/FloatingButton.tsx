@@ -131,9 +131,16 @@ const FloatingButton = () => {
     '--accent': launcherMode === 'hotkey' ? '#f59e0b' : activeShortcut?.accent ?? '#3370ff'
   } as CSSProperties
 
+  const formatHotkeyLabel = (target: string) => target
+    .replace(/Command/g, '⌘')
+    .replace(/Shift/g, '⇧')
+    .replace(/Option/g, '⌥')
+    .replace(/Control/g, '⌃')
+    .replace(/\+/g, '')
+
   return (
     <div
-      className="floating-stage"
+      className={`floating-stage ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
       onWheel={(event) => {
         event.preventDefault()
         stepShortcut(event.deltaY > 0 ? 1 : -1)
@@ -167,10 +174,10 @@ const FloatingButton = () => {
 
       {launcherMode === 'hotkey' && (
         <div className="hotkey-burst" aria-label="快捷键按钮">
-          {hotkeyShortcuts.slice(0, 6).map((shortcut, index) => (
+          {hotkeyShortcuts.slice(0, 6).map((shortcut) => (
             <button
               key={shortcut.id}
-              className={`hotkey-burst-item hotkey-burst-item-${index}`}
+              className="hotkey-burst-item"
               style={{ '--accent': shortcut.accent } as CSSProperties}
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
@@ -180,7 +187,8 @@ const FloatingButton = () => {
               }}
               title={`${shortcut.name}: ${shortcut.target}`}
             >
-              {shortcut.symbol.slice(0, 2)}
+              <span>{shortcut.name}</span>
+              <kbd>{formatHotkeyLabel(shortcut.target)}</kbd>
             </button>
           ))}
         </div>
@@ -203,17 +211,19 @@ const FloatingButton = () => {
         </div>
       )}
 
-      <button
-        className="floating-config"
-        type="button"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation()
-          window.electronAPI?.openMainWindow()
-        }}
-      >
-        +
-      </button>
+      {launcherMode === 'launch' && (
+        <button
+          className="floating-config"
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            window.electronAPI?.openMainWindow()
+          }}
+        >
+          +
+        </button>
+      )}
     </div>
   )
 }
