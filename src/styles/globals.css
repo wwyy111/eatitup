@@ -201,6 +201,7 @@ code {
 
 .floating-stage:hover .floating-switcher,
 .floating-stage:hover .hotkey-burst,
+.floating-stage:hover .floating-mode-toggle,
 .floating-stage:hover .floating-config {
   opacity: 1;
   transform: translateY(0);
@@ -209,12 +210,39 @@ code {
 
 .floating-switcher button,
 .hotkey-burst button,
+.floating-mode-toggle,
 .floating-config {
   border: 0;
   cursor: pointer;
   color: #1f2937;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+}
+
+.floating-mode-toggle {
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 22px;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.floating-mode-toggle.is-hotkey-mode {
+  left: 18px;
+  top: auto;
+  bottom: 16px;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  line-height: 24px;
 }
 
 .floating-button-container.is-hotkey-mode::before {
@@ -476,6 +504,18 @@ code {
   gap: 10px;
 }
 
+.empty-shortcut-state {
+  min-height: 120px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 700;
+  background: #fbfcff;
+}
+
 .shortcut-row {
   --accent: #3370ff;
   min-height: 78px;
@@ -554,6 +594,20 @@ code {
   border-radius: 8px;
   padding: 8px 12px;
   cursor: pointer;
+}
+
+.shortcut-actions .danger-action {
+  width: 34px;
+  padding: 0;
+  color: #ef4444;
+  font-size: 18px;
+  line-height: 32px;
+  font-weight: 800;
+}
+
+.shortcut-actions .danger-action:hover {
+  border-color: #fecaca;
+  background: #fff1f2;
 }
 
 .toggle input {

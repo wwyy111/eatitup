@@ -62,6 +62,12 @@ const FloatingButton = () => {
     await window.electronAPI?.setActiveShortcut(shortcutId)
   }
 
+  const toggleLauncherMode = async () => {
+    const nextMode = launcherMode === 'hotkey' ? 'launch' : 'hotkey'
+    setLauncherMode(nextMode)
+    await window.electronAPI?.setLauncherMode(nextMode)
+  }
+
   const stepShortcut = async (direction: 1 | -1) => {
     if (enabledShortcuts.length === 0) return
 
@@ -150,6 +156,12 @@ const FloatingButton = () => {
     window.electronAPI?.openMainWindow()
   }
 
+  const handleModeTogglePointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    toggleLauncherMode()
+  }
+
   return (
     <div
       className={`floating-stage ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
@@ -221,6 +233,18 @@ const FloatingButton = () => {
         ))}
         </div>
       )}
+
+      <button
+        className={`floating-mode-toggle ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
+        type="button"
+        onPointerDown={(event) => {
+          event.stopPropagation()
+        }}
+        onPointerUp={handleModeTogglePointerUp}
+        title={launcherMode === 'hotkey' ? '切换到启动模式' : '切换到快捷键模式'}
+      >
+        {launcherMode === 'hotkey' ? '↗' : '⌘'}
+      </button>
 
       <button
         className={`floating-config ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}

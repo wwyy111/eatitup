@@ -153,6 +153,24 @@ const MainWindow = () => {
     await persistShortcuts(nextShortcuts)
   }
 
+  const handleDeleteShortcut = async (shortcutId: string) => {
+    const shortcut = shortcuts.find((item) => item.id === shortcutId)
+    if (!shortcut) return
+
+    const shouldDelete = window.confirm(`删除「${shortcut.name}」？`)
+    if (!shouldDelete) return
+
+    const nextShortcuts = shortcuts.filter((item) => item.id !== shortcutId)
+    const nextActiveShortcut = nextShortcuts.find((item) => item.enabled) ?? nextShortcuts[0]
+
+    await persistShortcuts(nextShortcuts)
+
+    if (activeShortcutId === shortcutId && nextActiveShortcut) {
+      setActiveShortcutId(nextActiveShortcut.id)
+      await window.electronAPI?.setActiveShortcut(nextActiveShortcut.id)
+    }
+  }
+
   const handleRunShortcut = async (shortcutId: string) => {
     await window.electronAPI?.executeShortcut(shortcutId)
   }
@@ -237,6 +255,12 @@ const MainWindow = () => {
             </div>
 
             <div className="shortcut-list">
+              {shortcuts.length === 0 && (
+                <div className="empty-shortcut-state">
+                  还没有快捷项
+                </div>
+              )}
+
               {shortcuts.map((shortcut) => (
                 <article
                   className={`shortcut-row ${shortcut.id === activeShortcutId ? 'is-active' : ''}`}
@@ -257,6 +281,15 @@ const MainWindow = () => {
 
                   <div className="shortcut-actions">
                     <button type="button" onClick={() => handleRunShortcut(shortcut.id)}>运行</button>
+                    <button
+                      className="danger-action"
+                      type="button"
+                      onClick={() => handleDeleteShortcut(shortcut.id)}
+                      aria-label={`删除 ${shortcut.name}`}
+                      title="删除"
+                    >
+                      ×
+                    </button>
                     <label className="toggle">
                       <input
                         type="checkbox"

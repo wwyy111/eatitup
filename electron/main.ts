@@ -27,6 +27,7 @@ let lastExternalApp: { name: string; processId: number } | null = null
 let isRecordingHotkey = false
 let hotkeyRecorderProcess: ChildProcess | null = null
 let hotkeyRecorderBuffer = ''
+let suppressMainWindowActivationUntil = 0
 let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
@@ -161,12 +162,20 @@ function isCursorInsideFloatingWindow() {
 
 function showMainWindowFromActivation() {
   setTimeout(() => {
+    if (Date.now() < suppressMainWindowActivationUntil) {
+      return
+    }
+
     if (isCursorInsideFloatingWindow()) {
       return
     }
 
     showMainWindow()
   }, 120)
+}
+
+function suppressMainWindowActivation(durationMs = 800) {
+  suppressMainWindowActivationUntil = Date.now() + durationMs
 }
 
 function normalizeRecordedInputKey(key: string) {
@@ -766,7 +775,7 @@ function normalizeShortcuts(value: unknown): Shortcut[] {
     })
     .filter((shortcut) => ['feishu-record', 'url', 'app', 'hotkey'].includes(shortcut.kind))
 
-  return shortcuts.length > 0 ? shortcuts : DEFAULT_SHORTCUTS
+  return shortcuts
 }
 
 function getShortcuts() {
@@ -795,7 +804,7 @@ function saveShortcuts(shortcuts: unknown) {
 
   const activeShortcutId = store.get('activeShortcutId') as string | undefined
   if (!activeShortcutId || !normalizedShortcuts.some((shortcut) => shortcut.id === activeShortcutId)) {
-    store.set('activeShortcutId', normalizedShortcuts[0].id)
+    store.set('activeShortcutId', normalizedShortcuts[0]?.id ?? '')
   }
 
   return normalizedShortcuts
@@ -808,7 +817,7 @@ function getActiveShortcutId() {
     ?? shortcuts.find((shortcut) => shortcut.enabled)
     ?? shortcuts[0]
 
-  return activeShortcut.id
+  return activeShortcut?.id ?? ''
 }
 
 function getLauncherMode(): LauncherMode {
@@ -983,6 +992,8 @@ app.whenReady().then(() => {
   ipcMain.on('floating-drag-start', (_event, pointerPosition: { x: number; y: number }) => {
     if (!floatingWindow) return
 
+    suppressMainWindowActivation()
+
     dragState = {
       windowStartPosition: floatingWindow.getPosition() as [number, number],
       pointerStartPosition: pointerPosition
@@ -992,6 +1003,8 @@ app.whenReady().then(() => {
   ipcMain.on('floating-drag-move', (_event, pointerPosition: { x: number; y: number }) => {
     if (!floatingWindow || !dragState) return
 
+    suppressMainWindowActivation()
+
     const dx = pointerPosition.x - dragState.pointerStartPosition.x
     const dy = pointerPosition.y - dragState.pointerStartPosition.y
     const [startX, startY] = dragState.windowStartPosition
@@ -1000,6 +1013,8 @@ app.whenReady().then(() => {
   })
 
   ipcMain.on('floating-drag-end', () => {
+    suppressMainWindowActivation(1200)
+
     if (floatingWindow) {
       const [x, y] = floatingWindow.getPosition()
       store.set('windowPosition', { x, y })
