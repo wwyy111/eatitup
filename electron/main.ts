@@ -15,7 +15,6 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let frontmostTrackingTimer: NodeJS.Timeout | null = null
 let lastExternalApp: { name: string; processId: number } | null = null
-let lastFloatingInteractionAt = 0
 let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
@@ -117,20 +116,27 @@ function showMainWindow() {
   mainWindow.focus()
 }
 
-function markFloatingInteraction() {
-  lastFloatingInteractionAt = Date.now()
+function isCursorInsideFloatingWindow() {
+  if (!floatingWindow) {
+    return false
+  }
+
+  const cursorPosition = screen.getCursorScreenPoint()
+  const floatingBounds = floatingWindow.getBounds()
+  return cursorPosition.x >= floatingBounds.x
+    && cursorPosition.x <= floatingBounds.x + floatingBounds.width
+    && cursorPosition.y >= floatingBounds.y
+    && cursorPosition.y <= floatingBounds.y + floatingBounds.height
 }
 
 function showMainWindowFromActivation() {
-  const activationStartedAt = Date.now()
-
   setTimeout(() => {
-    if (lastFloatingInteractionAt >= activationStartedAt - 50) {
+    if (isCursorInsideFloatingWindow()) {
       return
     }
 
     showMainWindow()
-  }, 140)
+  }, 120)
 }
 
 function getAssetPath(fileName: string) {
@@ -777,10 +783,6 @@ app.whenReady().then(() => {
     showMainWindow()
   })
 
-  ipcMain.on('floating-interaction', () => {
-    markFloatingInteraction()
-  })
-
   ipcMain.handle('minimize-window', async () => {
     if (floatingWindow) {
       floatingWindow.minimize()
@@ -806,7 +808,6 @@ app.whenReady().then(() => {
   ipcMain.on('floating-drag-start', (_event, pointerPosition: { x: number; y: number }) => {
     if (!floatingWindow) return
 
-    markFloatingInteraction()
     dragState = {
       windowStartPosition: floatingWindow.getPosition() as [number, number],
       pointerStartPosition: pointerPosition
@@ -837,6 +838,7 @@ app.whenReady().then(() => {
       createFloatingWindow()
       createMainWindow()
     } else {
+      floatingWindow?.show()
       showMainWindowFromActivation()
     }
   })

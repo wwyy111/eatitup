@@ -73,7 +73,6 @@ const FloatingButton = () => {
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
 
-    window.electronAPI?.markFloatingInteraction()
     event.currentTarget.setPointerCapture(event.pointerId)
     pointerStartPos.current = { x: event.screenX, y: event.screenY }
     hasMoved.current = false
@@ -195,7 +194,6 @@ const FloatingButton = () => {
               type="button"
               onPointerDown={(event) => {
                 event.stopPropagation()
-                window.electronAPI?.markFloatingInteraction()
               }}
               onPointerUp={(event) => handleHotkeyButtonPointerUp(event, shortcut.id)}
               title={`${shortcut.name}: ${shortcut.target}`}
@@ -229,7 +227,6 @@ const FloatingButton = () => {
         type="button"
         onPointerDown={(event) => {
           event.stopPropagation()
-          window.electronAPI?.markFloatingInteraction()
         }}
         onPointerUp={handleConfigPointerUp}
         title="打开配置面板"
