@@ -53,6 +53,8 @@ function createFloatingWindow() {
     height: 220,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
     alwaysOnTop: true,
     resizable: false,
     focusable: false,

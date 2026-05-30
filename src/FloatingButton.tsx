@@ -27,6 +27,10 @@ const FloatingButton = () => {
     [activeShortcutId, enabledShortcuts, shortcuts]
   )
 
+  const burstShortcuts = launcherMode === 'hotkey'
+    ? hotkeyShortcuts.slice(0, 6)
+    : enabledShortcuts.slice(0, 6)
+
   useEffect(() => {
     let isMounted = true
 
@@ -150,6 +154,13 @@ const FloatingButton = () => {
     window.electronAPI?.executeShortcut(shortcutId)
   }
 
+  const handleLaunchButtonPointerUp = async (event: PointerEvent<HTMLButtonElement>, shortcutId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    await switchShortcut(shortcutId)
+    await window.electronAPI?.executeShortcut(shortcutId)
+  }
+
   const handleConfigPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -160,6 +171,23 @@ const FloatingButton = () => {
     event.preventDefault()
     event.stopPropagation()
     toggleLauncherMode()
+  }
+
+  const getBurstButtonStyle = (index: number, total: number, accent: string) => {
+    const radius = total <= 3 ? 70 : 78
+    const startAngle = total <= 3 ? -140 : -155
+    const endAngle = total <= 3 ? -40 : 155
+    const angle = total === 1
+      ? -90
+      : startAngle + ((endAngle - startAngle) / (total - 1)) * index
+    const radians = (angle * Math.PI) / 180
+
+    return {
+      '--accent': accent,
+      '--burst-x': `${Math.cos(radians) * radius}px`,
+      '--burst-y': `${Math.sin(radians) * radius}px`,
+      '--burst-delay': `${index * 18}ms`
+    } as CSSProperties
   }
 
   return (
@@ -196,43 +224,31 @@ const FloatingButton = () => {
         </div>
       </div>
 
-      {launcherMode === 'hotkey' && (
-        <div className="hotkey-burst" aria-label="快捷键按钮">
-          {hotkeyShortcuts.slice(0, 6).map((shortcut) => (
-            <button
-              key={shortcut.id}
-              className="hotkey-burst-item"
-              style={{ '--accent': shortcut.accent } as CSSProperties}
-              type="button"
-              onPointerDown={(event) => {
-                event.stopPropagation()
-              }}
-              onPointerUp={(event) => handleHotkeyButtonPointerUp(event, shortcut.id)}
-              title={`${shortcut.name}: ${shortcut.target}`}
-            >
-              <span>{shortcut.name}</span>
-              <kbd>{formatHotkeyLabel(shortcut.target)}</kbd>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {launcherMode === 'launch' && (
-        <div className="floating-switcher" aria-label="快捷项切换">
-        {enabledShortcuts.slice(0, 4).map((shortcut) => (
+      <div className="floating-burst-ring" aria-label={launcherMode === 'hotkey' ? '快捷键按钮' : '快捷启动按钮'}>
+        {burstShortcuts.map((shortcut, index) => (
           <button
             key={shortcut.id}
-            className={shortcut.id === activeShortcut?.id ? 'is-active' : ''}
-            style={{ '--accent': shortcut.accent } as CSSProperties}
+            className={`floating-burst-item ${shortcut.id === activeShortcut?.id ? 'is-active' : ''}`}
+            style={getBurstButtonStyle(index, burstShortcuts.length, shortcut.accent)}
             type="button"
-            onClick={() => switchShortcut(shortcut.id)}
-            title={shortcut.name}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+            }}
+            onPointerUp={(event) => {
+              if (launcherMode === 'hotkey') {
+                handleHotkeyButtonPointerUp(event, shortcut.id)
+                return
+              }
+
+              handleLaunchButtonPointerUp(event, shortcut.id)
+            }}
+            title={launcherMode === 'hotkey' ? `${shortcut.name}: ${shortcut.target}` : shortcut.name}
           >
-            {shortcut.symbol.slice(0, 2)}
+            <span>{shortcut.symbol.slice(0, 2)}</span>
+            {launcherMode === 'hotkey' && <kbd>{formatHotkeyLabel(shortcut.target)}</kbd>}
           </button>
         ))}
-        </div>
-      )}
+      </div>
 
       <button
         className={`floating-mode-toggle ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
@@ -255,7 +271,7 @@ const FloatingButton = () => {
         onPointerUp={handleConfigPointerUp}
         title="打开配置面板"
       >
-        {launcherMode === 'hotkey' ? '⚙' : '+'}
+        ⚙
       </button>
     </div>
   )

@@ -14,7 +14,6 @@
       <feDropShadow dx="0" dy="34" stdDeviation="34" flood-color="#10213F" flood-opacity="0.22"/>
     </filter>
   </defs>
-  <rect width="1024" height="1024" rx="230" fill="#F7FAFF"/>
   <g filter="url(#softShadow)">
     <circle cx="512" cy="500" r="324" fill="url(#bg)"/>
     <circle cx="512" cy="500" r="324" fill="url(#shine)"/>
