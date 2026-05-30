@@ -88,7 +88,26 @@ const MainWindow = () => {
 
     return () => {
       isMounted = false
+      window.electronAPI?.setHotkeyRecording(false)
     }
+  }, [])
+
+  useEffect(() => {
+    if (draft.kind !== 'hotkey') {
+      window.electronAPI?.setHotkeyRecording(false)
+    }
+  }, [draft.kind])
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onCapturedHotkey((hotkey) => {
+      setDraft((currentDraft) => ({
+        ...currentDraft,
+        target: hotkey,
+        symbol: currentDraft.symbol === 'bolt' ? 'key' : currentDraft.symbol
+      }))
+    })
+
+    return () => unsubscribe?.()
   }, [])
 
   const persistShortcuts = async (nextShortcuts: Shortcut[]) => {
@@ -160,6 +179,11 @@ const MainWindow = () => {
     ].filter(Boolean)
 
     setDraft({ ...draft, target: parts.join('+'), symbol: draft.symbol === 'bolt' ? 'key' : draft.symbol })
+  }
+
+  const handleHotkeyRecorderKeyUp = (event: KeyboardEvent<HTMLInputElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
   }
 
   return (
@@ -282,8 +306,13 @@ const MainWindow = () => {
                     className="hotkey-recorder"
                     value={draft.target ? formatHotkeyForDisplay(draft.target) : ''}
                     onKeyDown={handleRecordHotkey}
+                    onKeyUp={handleHotkeyRecorderKeyUp}
                     onChange={() => undefined}
-                    onFocus={(event) => event.currentTarget.select()}
+                    onFocus={(event) => {
+                      window.electronAPI?.setHotkeyRecording(true)
+                      event.currentTarget.select()
+                    }}
+                    onBlur={() => window.electronAPI?.setHotkeyRecording(false)}
                     placeholder="点这里，然后直接按下快捷键"
                     readOnly
                   />

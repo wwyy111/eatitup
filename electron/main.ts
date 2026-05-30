@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, ipcMain, screen, systemPreferences, dialog } from 'electron'
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, ipcMain, screen, systemPreferences, dialog, globalShortcut } from 'electron'
 import { execFile } from 'child_process'
 import * as path from 'path'
 import Store from 'electron-store'
@@ -9,12 +9,20 @@ const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const APP_NAME = '浮点启动台'
 const SELF_PROCESS_IDS = new Set([process.pid])
+const GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING = [
+  { accelerator: 'CommandOrControl+Shift+3', target: 'Command+Shift+3' },
+  { accelerator: 'CommandOrControl+Shift+4', target: 'Command+Shift+4' },
+  { accelerator: 'CommandOrControl+Shift+5', target: 'Command+Shift+5' },
+  { accelerator: 'CommandOrControl+Space', target: 'Command+Space' },
+  { accelerator: 'Control+CommandOrControl+Space', target: 'Control+Command+Space' }
+]
 
 let floatingWindow: BrowserWindow | null = null
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let frontmostTrackingTimer: NodeJS.Timeout | null = null
 let lastExternalApp: { name: string; processId: number } | null = null
+let isRecordingHotkey = false
 let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
@@ -103,6 +111,13 @@ function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    setHotkeyRecording(false)
+  })
+
+  mainWindow.webContents.on('before-input-event', (event) => {
+    if (isRecordingHotkey) {
+      event.preventDefault()
+    }
   })
 }
 
@@ -137,6 +152,25 @@ function showMainWindowFromActivation() {
 
     showMainWindow()
   }, 120)
+}
+
+function setHotkeyRecording(isRecording: boolean) {
+  isRecordingHotkey = isRecording
+
+  if (!isRecording) {
+    for (const shortcut of GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING) {
+      globalShortcut.unregister(shortcut.accelerator)
+    }
+    return
+  }
+
+  for (const shortcut of GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING) {
+    if (!globalShortcut.isRegistered(shortcut.accelerator)) {
+      globalShortcut.register(shortcut.accelerator, () => {
+        mainWindow?.webContents.send('hotkey-recording:captured', shortcut.target)
+      })
+    }
+  }
 }
 
 function getAssetPath(fileName: string) {
@@ -779,6 +813,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('launcher-mode:set', async (_event, mode: unknown) => setLauncherMode(mode))
 
+  ipcMain.handle('hotkey-recording:set', async (_event, isRecording: unknown) => {
+    setHotkeyRecording(Boolean(isRecording))
+  })
+
   ipcMain.handle('open-main-window', async () => {
     showMainWindow()
   })
@@ -853,6 +891,8 @@ app.on('window-all-closed', () => {
 
 // 应用退出前清理
 app.on('before-quit', () => {
+  setHotkeyRecording(false)
+
   if (frontmostTrackingTimer) {
     clearInterval(frontmostTrackingTimer)
     frontmostTrackingTimer = null

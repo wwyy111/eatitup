@@ -12,6 +12,8 @@ declare global {
       getActiveShortcut: () => Promise<string>
       setLauncherMode: (mode: LauncherMode) => Promise<LauncherMode>
       getLauncherMode: () => Promise<LauncherMode>
+      setHotkeyRecording: (isRecording: boolean) => Promise<void>
+      onCapturedHotkey: (callback: (hotkey: string) => void) => () => void
       openFeishuMeeting: () => Promise<void>
       openMainWindow: () => Promise<void>
       minimizeWindow: () => Promise<void>
