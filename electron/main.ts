@@ -256,29 +256,104 @@ function createHotkeyScript(hotkey: string, targetApp?: { name: string; processI
   }
 
   const modifierMap: Record<string, string> = {
-    command: 'command down',
-    cmd: 'command down',
-    '⌘': 'command down',
-    shift: 'shift down',
-    '⇧': 'shift down',
-    option: 'option down',
-    opt: 'option down',
-    alt: 'option down',
-    '⌥': 'option down',
-    control: 'control down',
-    ctrl: 'control down',
-    '⌃': 'control down'
+    command: 'command',
+    cmd: 'command',
+    '⌘': 'command',
+    shift: 'shift',
+    '⇧': 'shift',
+    option: 'option',
+    opt: 'option',
+    alt: 'option',
+    '⌥': 'option',
+    control: 'control',
+    ctrl: 'control',
+    '⌃': 'control'
   }
 
   const keyCodeMap: Record<string, number> = {
+    a: 0,
+    s: 1,
+    d: 2,
+    f: 3,
+    h: 4,
+    g: 5,
+    z: 6,
+    x: 7,
+    c: 8,
+    v: 9,
+    b: 11,
+    q: 12,
+    w: 13,
+    e: 14,
+    r: 15,
+    y: 16,
+    t: 17,
+    '1': 18,
+    '2': 19,
+    '3': 20,
+    '4': 21,
+    '5': 23,
+    '6': 22,
+    '=': 24,
+    plus: 24,
+    '+': 24,
+    '9': 25,
+    '7': 26,
+    '-': 27,
+    minus: 27,
+    '8': 28,
+    '0': 29,
+    ']': 30,
+    o: 31,
+    u: 32,
+    '[': 33,
+    i: 34,
+    p: 35,
     return: 36,
     enter: 36,
+    l: 37,
+    j: 38,
+    "'": 39,
+    quote: 39,
+    k: 40,
+    ';': 41,
+    semicolon: 41,
+    '\\': 42,
+    backslash: 42,
+    ',': 43,
+    comma: 43,
+    '/': 44,
+    slash: 44,
+    n: 45,
+    m: 46,
+    '.': 47,
+    period: 47,
     tab: 48,
     space: 49,
+    '`': 50,
+    backquote: 50,
+    grave: 50,
     delete: 51,
     backspace: 51,
     escape: 53,
     esc: 53,
+    f1: 122,
+    f2: 120,
+    f3: 99,
+    f4: 118,
+    f5: 96,
+    f6: 97,
+    f7: 98,
+    f8: 100,
+    f9: 101,
+    f10: 109,
+    f11: 103,
+    f12: 111,
+    home: 115,
+    pageup: 116,
+    forwarddelete: 117,
+    end: 119,
+    pagedown: 121,
     left: 123,
     right: 124,
     down: 125,
@@ -289,7 +364,7 @@ function createHotkeyScript(hotkey: string, targetApp?: { name: string; processI
     .map((part) => modifierMap[part.toLowerCase()])
     .filter(Boolean)
 
-  const usingClause = modifiers.length > 0 ? ` using {${modifiers.join(', ')}}` : ''
+  const usingClause = modifiers.length > 0 ? ` using {${modifiers.map((modifier) => `${modifier} down`).join(', ')}}` : ''
   const normalizedKey = key.toLowerCase()
   const targetPrelude = targetApp
     ? `set targetProcesses to application processes whose unix id is ${targetApp.processId}
@@ -299,8 +374,20 @@ function createHotkeyScript(hotkey: string, targetApp?: { name: string; processI
   end if
   `
     : ''
-  const keyCommand = keyCodeMap[normalizedKey]
-    ? `key code ${keyCodeMap[normalizedKey]}${usingClause}`
+  const keyCode = keyCodeMap[normalizedKey]
+  const modifierDownCommands = modifiers.map((modifier) => `key down ${modifier}`)
+  const modifierUpCommands = [...modifiers].reverse().map((modifier) => `key up ${modifier}`)
+  const keyCommand = keyCode !== undefined
+    ? `try
+    ${modifierDownCommands.join('\n    ')}
+    delay 0.03
+    key code ${keyCode}
+    delay 0.03
+    ${modifierUpCommands.join('\n    ')}
+  on error errMsg
+    ${modifierUpCommands.join('\n    ')}
+    error errMsg
+  end try`
     : `keystroke "${escapeAppleScriptText(key.length === 1 ? key.toLowerCase() : key)}"${usingClause}`
 
   return `tell application "System Events"
