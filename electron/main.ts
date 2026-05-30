@@ -16,6 +16,7 @@ const GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING = [
   { accelerator: 'CommandOrControl+Space', target: 'Command+Space' },
   { accelerator: 'Control+CommandOrControl+Space', target: 'Control+Command+Space' }
 ]
+const RECORDING_MODIFIER_KEYS = new Set(['Meta', 'OS', 'Super', 'Command', 'Cmd', 'Shift', 'Alt', 'Control', 'Fn', 'fn'])
 
 let floatingWindow: BrowserWindow | null = null
 let mainWindow: BrowserWindow | null = null
@@ -114,8 +115,15 @@ function createMainWindow() {
     setHotkeyRecording(false)
   })
 
-  mainWindow.webContents.on('before-input-event', (event) => {
+  mainWindow.webContents.on('before-input-event', (event, input) => {
     if (isRecordingHotkey) {
+      if (input.type === 'keyDown' && !input.isAutoRepeat) {
+        const hotkey = createRecordedHotkeyFromInput(input)
+        if (hotkey) {
+          mainWindow?.webContents.send('hotkey-recording:captured', hotkey)
+        }
+      }
+
       event.preventDefault()
     }
   })
@@ -152,6 +160,53 @@ function showMainWindowFromActivation() {
 
     showMainWindow()
   }, 120)
+}
+
+function normalizeRecordedInputKey(key: string) {
+  const keyMap: Record<string, string> = {
+    ' ': 'Space',
+    Meta: 'Command',
+    OS: 'Command',
+    Super: 'Command',
+    Fn: '',
+    fn: '',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    Escape: 'Escape',
+    Enter: 'Return',
+    Backspace: 'Delete'
+  }
+
+  if (keyMap[key] !== undefined) return keyMap[key]
+  if (key.length === 1) return key.toUpperCase()
+  return key
+}
+
+function createRecordedHotkeyFromInput(input: {
+  key: string
+  meta: boolean
+  control: boolean
+  alt: boolean
+  shift: boolean
+}) {
+  if (!input.key || RECORDING_MODIFIER_KEYS.has(input.key)) {
+    return ''
+  }
+
+  const normalizedKey = normalizeRecordedInputKey(input.key)
+  if (!normalizedKey) {
+    return ''
+  }
+
+  return [
+    input.meta ? 'Command' : '',
+    input.control ? 'Control' : '',
+    input.alt ? 'Option' : '',
+    input.shift ? 'Shift' : '',
+    normalizedKey
+  ].filter(Boolean).join('+')
 }
 
 function setHotkeyRecording(isRecording: boolean) {
