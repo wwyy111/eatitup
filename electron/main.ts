@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, Tray, Menu, nativeImage, ipcMain, screen, systemPreferences, dialog, globalShortcut } from 'electron'
-import { execFile } from 'child_process'
+import { execFile, spawn, type ChildProcess } from 'child_process'
+import * as fs from 'fs'
 import * as path from 'path'
 import Store from 'electron-store'
 import { DEFAULT_SHORTCUTS, type LauncherMode, type Shortcut } from '../src/shortcuts'
@@ -24,6 +25,8 @@ let tray: Tray | null = null
 let frontmostTrackingTimer: NodeJS.Timeout | null = null
 let lastExternalApp: { name: string; processId: number } | null = null
 let isRecordingHotkey = false
+let hotkeyRecorderProcess: ChildProcess | null = null
+let hotkeyRecorderBuffer = ''
 let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
@@ -112,6 +115,10 @@ function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    setHotkeyRecording(false)
+  })
+
+  mainWindow.on('blur', () => {
     setHotkeyRecording(false)
   })
 
@@ -213,11 +220,14 @@ function setHotkeyRecording(isRecording: boolean) {
   isRecordingHotkey = isRecording
 
   if (!isRecording) {
+    stopHotkeyRecorderHelper()
     for (const shortcut of GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING) {
       globalShortcut.unregister(shortcut.accelerator)
     }
     return
   }
+
+  startHotkeyRecorderHelper()
 
   for (const shortcut of GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING) {
     if (!globalShortcut.isRegistered(shortcut.accelerator)) {
@@ -226,6 +236,78 @@ function setHotkeyRecording(isRecording: boolean) {
       })
     }
   }
+}
+
+function getHotkeyRecorderHelperPath() {
+  if (process.platform !== 'darwin') {
+    return null
+  }
+
+  const helperPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'HotkeyRecorder')
+    : path.join(__dirname, 'HotkeyRecorder')
+
+  if (!fs.existsSync(helperPath)) {
+    console.warn('Hotkey recorder helper not found. Run npm run build to compile it.')
+    return null
+  }
+
+  return helperPath
+}
+
+function startHotkeyRecorderHelper() {
+  if (hotkeyRecorderProcess || process.platform !== 'darwin') {
+    return
+  }
+
+  const helperPath = getHotkeyRecorderHelperPath()
+  if (!helperPath) {
+    return
+  }
+
+  hotkeyRecorderBuffer = ''
+  const recorderProcess = spawn(helperPath, [], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  hotkeyRecorderProcess = recorderProcess
+
+  recorderProcess.stdout?.on('data', (chunk: Buffer) => {
+    hotkeyRecorderBuffer += chunk.toString('utf8')
+    const lines = hotkeyRecorderBuffer.split(/\r?\n/)
+    hotkeyRecorderBuffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const hotkey = line.trim()
+      if (hotkey && !hotkey.startsWith('ERROR:')) {
+        mainWindow?.webContents.send('hotkey-recording:captured', hotkey)
+      }
+    }
+  })
+
+  recorderProcess.stderr?.on('data', (chunk: Buffer) => {
+    const message = chunk.toString('utf8').trim()
+    if (message) {
+      console.warn(`Hotkey recorder helper: ${message}`)
+    }
+  })
+
+  recorderProcess.on('exit', () => {
+    if (hotkeyRecorderProcess === recorderProcess) {
+      hotkeyRecorderProcess = null
+      hotkeyRecorderBuffer = ''
+    }
+  })
+}
+
+function stopHotkeyRecorderHelper() {
+  if (!hotkeyRecorderProcess) {
+    return
+  }
+
+  const processToStop = hotkeyRecorderProcess
+  hotkeyRecorderProcess = null
+  hotkeyRecorderBuffer = ''
+  processToStop.kill()
 }
 
 function getAssetPath(fileName: string) {

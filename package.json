@@ -5,8 +5,9 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "tsc && vite build && npm run build:helper",
+    "build:helper": "node electron/build-hotkey-recorder.cjs",
+    "electron:dev": "npm run build:helper && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
     "preview": "vite preview"
   },
@@ -39,7 +40,14 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "electron/HotkeyRecorder.swift",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist-electron/HotkeyRecorder",
+        "to": "HotkeyRecorder"
+      }
     ],
     "mac": {
       "category": "public.app-category.productivity",
