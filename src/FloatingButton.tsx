@@ -3,26 +3,38 @@ import { DEFAULT_SHORTCUTS, type LauncherMode, type Shortcut } from './shortcuts
 
 const TEAR_DISABLE_DISTANCE = 46
 const CLICK_EXECUTE_DISTANCE = 6
+const MAIN_BUTTON_HIT_RADIUS = 42
+const SMALL_BUTTON_HIT_RADIUS = 24
+const BURST_BUTTON_HIT_RADIUS = 28
+const EXPANDED_KEEPALIVE_RADIUS = 126
+
+type TearState = {
+  shortcutId: string
+  pointerId: number
+  offsetX: number
+  offsetY: number
+  isPastThreshold: boolean
+} | null
 
 const FloatingButton = () => {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS)
   const [activeShortcutId, setActiveShortcutId] = useState(DEFAULT_SHORTCUTS[0].id)
   const [launcherMode, setLauncherMode] = useState<LauncherMode>('launch')
   const [isDragging, setIsDragging] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
   const [absorbedName, setAbsorbedName] = useState('')
   const [pointerOffset, setPointerOffset] = useState({ x: 0, y: 0 })
+  const [tearState, setTearState] = useState<TearState>(null)
   const pointerStartPos = useRef({ x: 0, y: 0 })
   const hasMoved = useRef(false)
   const tearStartPos = useRef({ x: 0, y: 0 })
-  const [tearState, setTearState] = useState<{
-    shortcutId: string
-    pointerId: number
-    offsetX: number
-    offsetY: number
-    isPastThreshold: boolean
-  } | null>(null)
+  const isDraggingRef = useRef(false)
+  const isExpandedRef = useRef(false)
+  const tearStateRef = useRef<TearState>(null)
+  const isMousePassthroughRef = useRef<boolean | null>(null)
+  const burstShortcutsRef = useRef<Shortcut[]>([])
 
   const enabledShortcuts = useMemo(
     () => shortcuts.filter((shortcut) => shortcut.enabled),
@@ -47,6 +59,11 @@ const FloatingButton = () => {
   const burstShortcuts = launcherMode === 'hotkey'
     ? hotkeyShortcuts.slice(0, 6)
     : launchShortcuts.slice(0, 6)
+
+  burstShortcutsRef.current = burstShortcuts
+  isExpandedRef.current = isExpanded
+  isDraggingRef.current = isDragging
+  tearStateRef.current = tearState
 
   useEffect(() => {
     let isMounted = true
@@ -76,6 +93,14 @@ const FloatingButton = () => {
       isMounted = false
       unsubscribeAbsorbed?.()
       window.clearInterval(refreshTimer)
+    }
+  }, [])
+
+  useEffect(() => {
+    setMousePassthrough(true)
+
+    return () => {
+      setMousePassthrough(false)
     }
   }, [])
 
@@ -110,6 +135,15 @@ const FloatingButton = () => {
     const nextMode = launcherMode === 'hotkey' ? 'launch' : 'hotkey'
     setLauncherMode(nextMode)
     await window.electronAPI?.setLauncherMode(nextMode)
+  }
+
+  const setMousePassthrough = (isPassthrough: boolean) => {
+    if (isMousePassthroughRef.current === isPassthrough) {
+      return
+    }
+
+    isMousePassthroughRef.current = isPassthrough
+    window.electronAPI?.setFloatingMousePassthrough(isPassthrough)
   }
 
   const stepShortcut = async (direction: 1 | -1) => {
@@ -298,6 +332,77 @@ const FloatingButton = () => {
     } as CSSProperties
   }
 
+  const getBurstButtonOffset = (index: number, total: number) => {
+    const radius = total <= 3 ? 70 : 78
+    const startAngle = total <= 3 ? -140 : -155
+    const endAngle = total <= 3 ? -40 : 155
+    const angle = total === 1
+      ? -90
+      : startAngle + ((endAngle - startAngle) / (total - 1)) * index
+    const radians = (angle * Math.PI) / 180
+
+    return {
+      x: Math.cos(radians) * radius,
+      y: Math.sin(radians) * radius
+    }
+  }
+
+  useEffect(() => {
+    const getDistance = (
+      point: { x: number; y: number },
+      target: { x: number; y: number }
+    ) => Math.hypot(point.x - target.x, point.y - target.y)
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+      const point = { x: event.clientX, y: event.clientY }
+      const isOverMainButton = getDistance(point, center) <= MAIN_BUTTON_HIT_RADIUS
+      const shouldStayExpanded = isExpandedRef.current
+        && getDistance(point, center) <= EXPANDED_KEEPALIVE_RADIUS
+
+      let isOverControl = isOverMainButton
+
+      if (isExpandedRef.current || shouldStayExpanded || isOverMainButton) {
+        const modeCenter = { x: center.x - 50, y: center.y + 58 }
+        const configCenter = { x: center.x + 50, y: center.y + 58 }
+        const isOverMode = getDistance(point, modeCenter) <= SMALL_BUTTON_HIT_RADIUS
+        const isOverConfig = getDistance(point, configCenter) <= SMALL_BUTTON_HIT_RADIUS
+        const isOverBurst = burstShortcutsRef.current.some((_shortcut, index) => {
+          const offset = getBurstButtonOffset(index, burstShortcutsRef.current.length)
+          return getDistance(point, { x: center.x + offset.x, y: center.y + offset.y }) <= BURST_BUTTON_HIT_RADIUS
+        })
+
+        isOverControl = isOverControl || isOverMode || isOverConfig || isOverBurst
+      }
+
+      const nextExpanded = isDraggingRef.current
+        || Boolean(tearStateRef.current)
+        || isOverMainButton
+        || shouldStayExpanded
+        || isOverControl
+
+      setIsExpanded(nextExpanded)
+      setIsHovering(isOverMainButton)
+      setMousePassthrough(!(isDraggingRef.current || Boolean(tearStateRef.current) || isOverControl))
+    }
+
+    const handleMouseLeave = () => {
+      if (!isDraggingRef.current && !tearStateRef.current) {
+        setIsExpanded(false)
+        setIsHovering(false)
+        setMousePassthrough(true)
+      }
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseleave', handleMouseLeave)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseleave', handleMouseLeave)
+    }
+  }, [])
+
   const getTearStyle = (shortcutId: string) => {
     if (tearState?.shortcutId !== shortcutId) {
       return {}
@@ -311,7 +416,11 @@ const FloatingButton = () => {
 
   return (
     <div
-      className={`floating-stage ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
+      className={[
+        'floating-stage',
+        launcherMode === 'hotkey' ? 'is-hotkey-mode' : '',
+        isExpanded ? 'is-expanded' : ''
+      ].join(' ')}
       onWheel={(event) => {
         event.preventDefault()
         stepShortcut(event.deltaY > 0 ? 1 : -1)

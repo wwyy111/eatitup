@@ -23,6 +23,7 @@ declare global {
       startFloatingDrag: (pointerPosition: { x: number; y: number }) => void
       moveFloatingWindow: (pointerPosition: { x: number; y: number }) => void
       endFloatingDrag: () => void
+      setFloatingMousePassthrough: (isPassthrough: boolean) => void
     }
   }
 }

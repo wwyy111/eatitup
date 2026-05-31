@@ -47,6 +47,7 @@ let hotkeyRecorderProcess: ChildProcess | null = null
 let hotkeyRecorderBuffer = ''
 let windowDropMonitorProcess: ChildProcess | null = null
 let windowDropMonitorBuffer = ''
+let floatingWindowIsPassthrough = false
 let suppressMainWindowActivationUntil = 0
 let windowDropCandidate: {
   startPosition: { x: number; y: number }
@@ -117,6 +118,7 @@ function createFloatingWindow() {
   }
 
   store.set('windowSize', { width: FLOATING_WINDOW_WIDTH, height: FLOATING_WINDOW_HEIGHT })
+  setFloatingMousePassthrough(true)
 
   floatingWindow.on('move', () => {
     const [x, y] = floatingWindow!.getPosition()
@@ -126,7 +128,17 @@ function createFloatingWindow() {
 
   floatingWindow.on('closed', () => {
     floatingWindow = null
+    floatingWindowIsPassthrough = false
   })
+}
+
+function setFloatingMousePassthrough(isPassthrough: boolean) {
+  if (!floatingWindow || floatingWindowIsPassthrough === isPassthrough) {
+    return
+  }
+
+  floatingWindowIsPassthrough = isPassthrough
+  floatingWindow.setIgnoreMouseEvents(isPassthrough, { forward: true })
 }
 
 function createMainWindow() {
@@ -1363,10 +1375,15 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.on('floating-mouse-passthrough', (_event, isPassthrough: boolean) => {
+    setFloatingMousePassthrough(Boolean(isPassthrough))
+  })
+
   ipcMain.on('floating-drag-start', (_event, pointerPosition: { x: number; y: number }) => {
     if (!floatingWindow) return
 
     suppressMainWindowActivation()
+    setFloatingMousePassthrough(false)
 
     dragState = {
       windowStartPosition: floatingWindow.getPosition() as [number, number],

@@ -189,18 +189,18 @@ code {
   animation: floating-absorb-pop 520ms cubic-bezier(0.2, 0.9, 0.24, 1.18);
 }
 
-.floating-stage:hover .floating-burst-item,
-.floating-stage:hover .floating-mode-toggle,
-.floating-stage:hover .floating-config {
+.floating-stage.is-expanded .floating-burst-item,
+.floating-stage.is-expanded .floating-mode-toggle,
+.floating-stage.is-expanded .floating-config {
   opacity: 1;
   pointer-events: auto;
 }
 
-.floating-stage:hover .floating-burst-item {
+.floating-stage.is-expanded .floating-burst-item {
   transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) scale(1);
 }
 
-.floating-stage:hover .floating-burst-item.is-tearing {
+.floating-stage.is-expanded .floating-burst-item.is-tearing {
   cursor: grabbing;
   transform: translate(
     calc(-50% + var(--burst-x) + var(--tear-x, 0px)),
@@ -210,7 +210,7 @@ code {
   z-index: 8;
 }
 
-.floating-stage:hover .floating-burst-item.is-removing {
+.floating-stage.is-expanded .floating-burst-item.is-removing {
   filter: saturate(1.05);
   background: #ef4444;
   box-shadow:
@@ -218,8 +218,8 @@ code {
     inset 0 1px 1px rgba(255, 255, 255, 0.42);
 }
 
-.floating-stage:hover .floating-mode-toggle,
-.floating-stage:hover .floating-config {
+.floating-stage.is-expanded .floating-mode-toggle,
+.floating-stage.is-expanded .floating-config {
   transform: translate(-50%, -50%) scale(1);
 }
 
