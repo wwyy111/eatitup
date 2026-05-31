@@ -196,6 +196,24 @@ code {
   transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) scale(1);
 }
 
+.floating-stage:hover .floating-burst-item.is-tearing {
+  cursor: grabbing;
+  transform: translate(
+    calc(-50% + var(--burst-x) + var(--tear-x, 0px)),
+    calc(-50% + var(--burst-y) + var(--tear-y, 0px))
+  ) scale(1.06) rotate(4deg);
+  transition: none;
+  z-index: 8;
+}
+
+.floating-stage:hover .floating-burst-item.is-removing {
+  filter: saturate(1.05);
+  background: #ef4444;
+  box-shadow:
+    0 18px 34px rgba(239, 68, 68, 0.28),
+    inset 0 1px 1px rgba(255, 255, 255, 0.42);
+}
+
 .floating-stage:hover .floating-mode-toggle,
 .floating-stage:hover .floating-config {
   transform: translate(-50%, -50%) scale(1);
@@ -240,6 +258,22 @@ code {
     box-shadow 150ms ease,
     filter 150ms ease;
   z-index: 5;
+}
+
+.floating-burst-item::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: inherit;
+  border: 1px dashed rgba(239, 68, 68, 0.72);
+  opacity: 0;
+  transform: scale(0.78);
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+
+.floating-burst-item.is-removing::after {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .floating-burst-item:hover {

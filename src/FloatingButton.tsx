@@ -1,6 +1,9 @@
 import { type CSSProperties, type PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_SHORTCUTS, type LauncherMode, type Shortcut } from './shortcuts'
 
+const TEAR_DISABLE_DISTANCE = 46
+const CLICK_EXECUTE_DISTANCE = 6
+
 const FloatingButton = () => {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS)
   const [activeShortcutId, setActiveShortcutId] = useState(DEFAULT_SHORTCUTS[0].id)
@@ -11,6 +14,14 @@ const FloatingButton = () => {
   const [pointerOffset, setPointerOffset] = useState({ x: 0, y: 0 })
   const pointerStartPos = useRef({ x: 0, y: 0 })
   const hasMoved = useRef(false)
+  const tearStartPos = useRef({ x: 0, y: 0 })
+  const [tearState, setTearState] = useState<{
+    shortcutId: string
+    pointerId: number
+    offsetX: number
+    offsetY: number
+    isPastThreshold: boolean
+  } | null>(null)
 
   const enabledShortcuts = useMemo(
     () => shortcuts.filter((shortcut) => shortcut.enabled),
@@ -22,14 +33,19 @@ const FloatingButton = () => {
     [enabledShortcuts]
   )
 
+  const launchShortcuts = useMemo(
+    () => enabledShortcuts.filter((shortcut) => shortcut.kind !== 'hotkey'),
+    [enabledShortcuts]
+  )
+
   const activeShortcut = useMemo(
-    () => enabledShortcuts.find((shortcut) => shortcut.id === activeShortcutId) ?? enabledShortcuts[0] ?? shortcuts[0],
-    [activeShortcutId, enabledShortcuts, shortcuts]
+    () => launchShortcuts.find((shortcut) => shortcut.id === activeShortcutId) ?? launchShortcuts[0],
+    [activeShortcutId, launchShortcuts]
   )
 
   const burstShortcuts = launcherMode === 'hotkey'
     ? hotkeyShortcuts.slice(0, 6)
-    : enabledShortcuts.slice(0, 6)
+    : launchShortcuts.slice(0, 6)
 
   useEffect(() => {
     let isMounted = true
@@ -66,6 +82,23 @@ const FloatingButton = () => {
     await window.electronAPI?.setActiveShortcut(shortcutId)
   }
 
+  const disableShortcut = async (shortcutId: string) => {
+    const nextShortcuts = shortcuts.map((shortcut) => (
+      shortcut.id === shortcutId ? { ...shortcut, enabled: false } : shortcut
+    ))
+    const nextEnabledShortcuts = nextShortcuts.filter((shortcut) => shortcut.enabled)
+    const nextLaunchShortcut = nextEnabledShortcuts.find((shortcut) => shortcut.kind !== 'hotkey')
+      ?? nextEnabledShortcuts[0]
+
+    setShortcuts(nextShortcuts)
+    await window.electronAPI?.saveShortcuts(nextShortcuts)
+
+    if (activeShortcutId === shortcutId && nextLaunchShortcut) {
+      setActiveShortcutId(nextLaunchShortcut.id)
+      await window.electronAPI?.setActiveShortcut(nextLaunchShortcut.id)
+    }
+  }
+
   const toggleLauncherMode = async () => {
     const nextMode = launcherMode === 'hotkey' ? 'launch' : 'hotkey'
     setLauncherMode(nextMode)
@@ -73,11 +106,12 @@ const FloatingButton = () => {
   }
 
   const stepShortcut = async (direction: 1 | -1) => {
-    if (enabledShortcuts.length === 0) return
+    const stepShortcuts = launcherMode === 'hotkey' ? hotkeyShortcuts : launchShortcuts
+    if (stepShortcuts.length === 0) return
 
-    const currentIndex = Math.max(0, enabledShortcuts.findIndex((shortcut) => shortcut.id === activeShortcut?.id))
-    const nextIndex = (currentIndex + direction + enabledShortcuts.length) % enabledShortcuts.length
-    await switchShortcut(enabledShortcuts[nextIndex].id)
+    const currentIndex = Math.max(0, stepShortcuts.findIndex((shortcut) => shortcut.id === activeShortcutId))
+    const nextIndex = (currentIndex + direction + stepShortcuts.length) % stepShortcuts.length
+    await switchShortcut(stepShortcuts[nextIndex].id)
   }
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -173,6 +207,73 @@ const FloatingButton = () => {
     toggleLauncherMode()
   }
 
+  const handleBurstButtonPointerDown = (event: PointerEvent<HTMLButtonElement>, shortcutId: string) => {
+    if (event.button !== 0) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    tearStartPos.current = { x: event.screenX, y: event.screenY }
+    setTearState({
+      shortcutId,
+      pointerId: event.pointerId,
+      offsetX: 0,
+      offsetY: 0,
+      isPastThreshold: false
+    })
+  }
+
+  const handleBurstButtonPointerMove = (event: PointerEvent<HTMLButtonElement>, shortcutId: string) => {
+    if (!tearState || tearState.shortcutId !== shortcutId || tearState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    const offsetX = event.screenX - tearStartPos.current.x
+    const offsetY = event.screenY - tearStartPos.current.y
+    const distance = Math.hypot(offsetX, offsetY)
+
+    setTearState({
+      shortcutId,
+      pointerId: event.pointerId,
+      offsetX,
+      offsetY,
+      isPastThreshold: distance >= TEAR_DISABLE_DISTANCE
+    })
+  }
+
+  const handleBurstButtonPointerUp = async (event: PointerEvent<HTMLButtonElement>, shortcutId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    const currentTearState = tearState
+    setTearState(null)
+
+    if (currentTearState?.shortcutId === shortcutId && currentTearState.isPastThreshold) {
+      await disableShortcut(shortcutId)
+      return
+    }
+
+    if (
+      currentTearState?.shortcutId === shortcutId
+      && Math.hypot(currentTearState.offsetX, currentTearState.offsetY) >= CLICK_EXECUTE_DISTANCE
+    ) {
+      return
+    }
+
+    if (launcherMode === 'hotkey') {
+      handleHotkeyButtonPointerUp(event, shortcutId)
+      return
+    }
+
+    await handleLaunchButtonPointerUp(event, shortcutId)
+  }
+
   const getBurstButtonStyle = (index: number, total: number, accent: string) => {
     const radius = total <= 3 ? 70 : 78
     const startAngle = total <= 3 ? -140 : -155
@@ -187,6 +288,17 @@ const FloatingButton = () => {
       '--burst-x': `${Math.cos(radians) * radius}px`,
       '--burst-y': `${Math.sin(radians) * radius}px`,
       '--burst-delay': `${index * 18}ms`
+    } as CSSProperties
+  }
+
+  const getTearStyle = (shortcutId: string) => {
+    if (tearState?.shortcutId !== shortcutId) {
+      return {}
+    }
+
+    return {
+      '--tear-x': `${tearState.offsetX}px`,
+      '--tear-y': `${tearState.offsetY}px`
     } as CSSProperties
   }
 
@@ -228,19 +340,25 @@ const FloatingButton = () => {
         {burstShortcuts.map((shortcut, index) => (
           <button
             key={shortcut.id}
-            className={`floating-burst-item ${shortcut.id === activeShortcut?.id ? 'is-active' : ''}`}
-            style={getBurstButtonStyle(index, burstShortcuts.length, shortcut.accent)}
-            type="button"
-            onPointerDown={(event) => {
-              event.stopPropagation()
+            className={[
+              'floating-burst-item',
+              shortcut.id === activeShortcut?.id ? 'is-active' : '',
+              tearState?.shortcutId === shortcut.id ? 'is-tearing' : '',
+              tearState?.shortcutId === shortcut.id && tearState.isPastThreshold ? 'is-removing' : ''
+            ].filter(Boolean).join(' ')}
+            style={{
+              ...getBurstButtonStyle(index, burstShortcuts.length, shortcut.accent),
+              ...getTearStyle(shortcut.id)
             }}
-            onPointerUp={(event) => {
-              if (launcherMode === 'hotkey') {
-                handleHotkeyButtonPointerUp(event, shortcut.id)
-                return
+            type="button"
+            onPointerDown={(event) => handleBurstButtonPointerDown(event, shortcut.id)}
+            onPointerMove={(event) => handleBurstButtonPointerMove(event, shortcut.id)}
+            onPointerUp={(event) => handleBurstButtonPointerUp(event, shortcut.id)}
+            onPointerCancel={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId)
               }
-
-              handleLaunchButtonPointerUp(event, shortcut.id)
+              setTearState(null)
             }}
             title={launcherMode === 'hotkey' ? `${shortcut.name}: ${shortcut.target}` : shortcut.name}
           >
