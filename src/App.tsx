@@ -23,6 +23,16 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('floating-route', route === 'floating')
+    document.body.classList.toggle('floating-route', route === 'floating')
+
+    return () => {
+      document.documentElement.classList.remove('floating-route')
+      document.body.classList.remove('floating-route')
+    }
+  }, [route])
+
   if (route === 'floating') {
     return <FloatingButton />
   }
