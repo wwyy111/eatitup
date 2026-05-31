@@ -25,6 +25,7 @@ const FLOATING_BUTTON_SIZE = 64
 const LEGACY_FLOATING_WINDOW_WIDTH = 286
 const LEGACY_FLOATING_WINDOW_HEIGHT = 220
 const ABSORB_TARGET_RADIUS = 74
+const FLOATING_CONTROL_ACTIVATION_RADIUS = 132
 const ABSORB_MIN_DRAG_DISTANCE = 80
 const SELF_BUNDLE_IDS = new Set(['com.github.Electron', 'com.float.launcher', 'local.float-launcher.launcher'])
 const GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING = [
@@ -276,25 +277,10 @@ function ensureDockVisible() {
   app.dock.setIcon(getAssetPath('app-icon.png'))
 }
 
-function isCursorInsideFloatingWindow() {
-  if (!floatingWindow) {
-    return false
-  }
-
+function isCursorInsideFloatingControls() {
   const cursorPosition = screen.getCursorScreenPoint()
-  return isPointInsideFloatingWindow(cursorPosition)
-}
-
-function isPointInsideFloatingWindow(point: { x: number; y: number }) {
-  if (!floatingWindow) {
-    return false
-  }
-
-  const floatingBounds = floatingWindow.getBounds()
-  return point.x >= floatingBounds.x
-    && point.x <= floatingBounds.x + floatingBounds.width
-    && point.y >= floatingBounds.y
-    && point.y <= floatingBounds.y + floatingBounds.height
+  const center = getFloatingWindowCenter()
+  return Math.hypot(cursorPosition.x - center.x, cursorPosition.y - center.y) <= FLOATING_CONTROL_ACTIVATION_RADIUS
 }
 
 function getFloatingWindowCenter() {
@@ -316,7 +302,7 @@ function showMainWindowFromActivation() {
       return
     }
 
-    if (isCursorInsideFloatingWindow()) {
+    if (isCursorInsideFloatingControls()) {
       return
     }
 
