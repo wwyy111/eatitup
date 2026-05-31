@@ -17,12 +17,14 @@ declare global {
       onShortcutAbsorbed: (callback: (name: string) => void) => () => void
       openFeishuMeeting: () => Promise<void>
       openMainWindow: () => Promise<void>
+      getFloatingPosition: () => Promise<{ x: number; y: number }>
+      setFloatingPosition: (position: { x: number; y: number }) => Promise<{ x: number; y: number }>
       minimizeWindow: () => Promise<void>
       maximizeWindow: () => Promise<void>
       closeWindow: () => Promise<void>
       startFloatingDrag: (pointerPosition: { x: number; y: number }) => void
       moveFloatingWindow: (pointerPosition: { x: number; y: number }) => void
-      endFloatingDrag: () => void
+      endFloatingDrag: (position?: { x: number; y: number }) => void
       setFloatingMousePassthrough: (isPassthrough: boolean) => void
     }
   }

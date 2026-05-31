@@ -7,6 +7,7 @@ const MAIN_BUTTON_HIT_RADIUS = 42
 const SMALL_BUTTON_HIT_RADIUS = 24
 const BURST_BUTTON_HIT_RADIUS = 28
 const EXPANDED_KEEPALIVE_RADIUS = 126
+const BUTTON_EDGE_MARGIN = 32
 
 type TearState = {
   shortcutId: string
@@ -26,8 +27,14 @@ const FloatingButton = () => {
   const [isPressed, setIsPressed] = useState(false)
   const [absorbedName, setAbsorbedName] = useState('')
   const [pointerOffset, setPointerOffset] = useState({ x: 0, y: 0 })
+  const [buttonPosition, setButtonPosition] = useState(() => ({
+    x: window.innerWidth / 2,
+    y: window.innerHeight / 2
+  }))
   const [tearState, setTearState] = useState<TearState>(null)
   const pointerStartPos = useRef({ x: 0, y: 0 })
+  const buttonStartPos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+  const buttonPositionRef = useRef(buttonPosition)
   const hasMoved = useRef(false)
   const tearStartPos = useRef({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
@@ -64,6 +71,7 @@ const FloatingButton = () => {
   isExpandedRef.current = isExpanded
   isDraggingRef.current = isDragging
   tearStateRef.current = tearState
+  buttonPositionRef.current = buttonPosition
 
   useEffect(() => {
     let isMounted = true
@@ -93,6 +101,23 @@ const FloatingButton = () => {
       isMounted = false
       unsubscribeAbsorbed?.()
       window.clearInterval(refreshTimer)
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    window.electronAPI?.getFloatingPosition()
+      .then((position) => {
+        if (!isMounted || !position) return
+        const nextPosition = clampButtonPosition(position)
+        setButtonPosition(nextPosition)
+        buttonPositionRef.current = nextPosition
+      })
+      .catch(() => undefined)
+
+    return () => {
+      isMounted = false
     }
   }, [])
 
@@ -146,6 +171,11 @@ const FloatingButton = () => {
     window.electronAPI?.setFloatingMousePassthrough(isPassthrough)
   }
 
+  const clampButtonPosition = (position: { x: number; y: number }) => ({
+    x: Math.max(BUTTON_EDGE_MARGIN, Math.min(window.innerWidth - BUTTON_EDGE_MARGIN, position.x)),
+    y: Math.max(BUTTON_EDGE_MARGIN, Math.min(window.innerHeight - BUTTON_EDGE_MARGIN, position.y))
+  })
+
   const stepShortcut = async (direction: 1 | -1) => {
     const stepShortcuts = launcherMode === 'hotkey' ? hotkeyShortcuts : launchShortcuts
     if (stepShortcuts.length === 0) return
@@ -160,6 +190,7 @@ const FloatingButton = () => {
 
     event.currentTarget.setPointerCapture(event.pointerId)
     pointerStartPos.current = { x: event.screenX, y: event.screenY }
+    buttonStartPos.current = buttonPositionRef.current
     hasMoved.current = false
     setIsDragging(true)
     setIsPressed(true)
@@ -185,6 +216,13 @@ const FloatingButton = () => {
       hasMoved.current = true
     }
 
+    const nextPosition = clampButtonPosition({
+      x: buttonStartPos.current.x + dx,
+      y: buttonStartPos.current.y + dy
+    })
+
+    setButtonPosition(nextPosition)
+    buttonPositionRef.current = nextPosition
     window.electronAPI?.moveFloatingWindow({ x: event.screenX, y: event.screenY })
   }
 
@@ -194,7 +232,8 @@ const FloatingButton = () => {
     event.currentTarget.releasePointerCapture(event.pointerId)
     setIsDragging(false)
     setIsPressed(false)
-    window.electronAPI?.endFloatingDrag()
+    window.electronAPI?.endFloatingDrag(buttonPositionRef.current)
+    window.electronAPI?.setFloatingPosition(buttonPositionRef.current).catch(() => undefined)
 
     if (!hasMoved.current && launcherMode === 'launch') {
       runActiveShortcut()
@@ -354,7 +393,7 @@ const FloatingButton = () => {
     ) => Math.hypot(point.x - target.x, point.y - target.y)
 
     const handleMouseMove = (event: MouseEvent) => {
-      const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+      const center = buttonPositionRef.current
       const point = { x: event.clientX, y: event.clientY }
       const isOverMainButton = getDistance(point, center) <= MAIN_BUTTON_HIT_RADIUS
       const shouldStayExpanded = isExpandedRef.current
@@ -427,93 +466,101 @@ const FloatingButton = () => {
       }}
     >
       <div
-        className={[
-          'floating-button-container',
-          launcherMode === 'hotkey' ? 'is-hotkey-mode' : '',
-          isHovering ? 'is-hovering' : '',
-          isDragging ? 'is-dragging' : '',
-          isPressed ? 'is-pressed' : '',
-          absorbedName ? 'is-absorbing' : ''
-        ].join(' ')}
-        style={dynamicStyle}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onPointerEnter={() => !isDragging && setIsHovering(true)}
-        onPointerLeave={handlePointerLeave}
+        className="floating-control-plane"
+        style={{
+          '--button-x': `${buttonPosition.x}px`,
+          '--button-y': `${buttonPosition.y}px`
+        } as CSSProperties}
       >
-        <div className="floating-orbit" />
-        <div className="floating-glow" />
-        <div className="floating-face">
-          <span className="floating-symbol">
-            {launcherMode === 'hotkey' ? '⌘' : activeShortcut?.symbol.slice(0, 2) ?? 'go'}
-          </span>
-          <span className="floating-pulse-dot" />
+        <div
+          className={[
+            'floating-button-container',
+            launcherMode === 'hotkey' ? 'is-hotkey-mode' : '',
+            isHovering ? 'is-hovering' : '',
+            isDragging ? 'is-dragging' : '',
+            isPressed ? 'is-pressed' : '',
+            absorbedName ? 'is-absorbing' : ''
+          ].join(' ')}
+          style={dynamicStyle}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerEnter={() => !isDragging && setIsHovering(true)}
+          onPointerLeave={handlePointerLeave}
+        >
+          <div className="floating-orbit" />
+          <div className="floating-glow" />
+          <div className="floating-face">
+            <span className="floating-symbol">
+              {launcherMode === 'hotkey' ? '⌘' : activeShortcut?.symbol.slice(0, 2) ?? 'go'}
+            </span>
+            <span className="floating-pulse-dot" />
+          </div>
         </div>
-      </div>
 
-      <div className="floating-burst-ring" aria-label={launcherMode === 'hotkey' ? '快捷键按钮' : '快捷启动按钮'}>
-        {burstShortcuts.map((shortcut, index) => (
-          <button
-            key={shortcut.id}
-            className={[
-              'floating-burst-item',
-              shortcut.id === activeShortcut?.id ? 'is-active' : '',
-              tearState?.shortcutId === shortcut.id ? 'is-tearing' : '',
-              tearState?.shortcutId === shortcut.id && tearState.isPastThreshold ? 'is-removing' : ''
-            ].filter(Boolean).join(' ')}
-            style={{
-              ...getBurstButtonStyle(index, burstShortcuts.length, shortcut.accent),
-              ...getTearStyle(shortcut.id)
-            }}
-            type="button"
-            onPointerDown={(event) => handleBurstButtonPointerDown(event, shortcut.id)}
-            onPointerMove={(event) => handleBurstButtonPointerMove(event, shortcut.id)}
-            onPointerUp={(event) => handleBurstButtonPointerUp(event, shortcut.id)}
-            onPointerCancel={(event) => {
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                event.currentTarget.releasePointerCapture(event.pointerId)
-              }
-              setTearState(null)
-            }}
-            title={launcherMode === 'hotkey' ? `${shortcut.name}: ${shortcut.target}` : shortcut.name}
-          >
-            <span>{shortcut.symbol.slice(0, 2)}</span>
-            {launcherMode === 'hotkey' && <kbd>{formatHotkeyLabel(shortcut.target)}</kbd>}
-          </button>
-        ))}
-      </div>
-
-      <button
-        className={`floating-mode-toggle ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
-        type="button"
-        onPointerDown={(event) => {
-          event.stopPropagation()
-        }}
-        onPointerUp={handleModeTogglePointerUp}
-        title={launcherMode === 'hotkey' ? '切换到启动模式' : '切换到快捷键模式'}
-      >
-        {launcherMode === 'hotkey' ? '↗' : '⌘'}
-      </button>
-
-      <button
-        className={`floating-config ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
-        type="button"
-        onPointerDown={(event) => {
-          event.stopPropagation()
-        }}
-        onPointerUp={handleConfigPointerUp}
-        title="打开配置面板"
-      >
-        ⚙
-      </button>
-
-      {absorbedName && (
-        <div className="floating-absorb-toast">
-          {absorbedName.slice(0, 10)}
+        <div className="floating-burst-ring" aria-label={launcherMode === 'hotkey' ? '快捷键按钮' : '快捷启动按钮'}>
+          {burstShortcuts.map((shortcut, index) => (
+            <button
+              key={shortcut.id}
+              className={[
+                'floating-burst-item',
+                shortcut.id === activeShortcut?.id ? 'is-active' : '',
+                tearState?.shortcutId === shortcut.id ? 'is-tearing' : '',
+                tearState?.shortcutId === shortcut.id && tearState.isPastThreshold ? 'is-removing' : ''
+              ].filter(Boolean).join(' ')}
+              style={{
+                ...getBurstButtonStyle(index, burstShortcuts.length, shortcut.accent),
+                ...getTearStyle(shortcut.id)
+              }}
+              type="button"
+              onPointerDown={(event) => handleBurstButtonPointerDown(event, shortcut.id)}
+              onPointerMove={(event) => handleBurstButtonPointerMove(event, shortcut.id)}
+              onPointerUp={(event) => handleBurstButtonPointerUp(event, shortcut.id)}
+              onPointerCancel={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId)
+                }
+                setTearState(null)
+              }}
+              title={launcherMode === 'hotkey' ? `${shortcut.name}: ${shortcut.target}` : shortcut.name}
+            >
+              <span>{shortcut.symbol.slice(0, 2)}</span>
+              {launcherMode === 'hotkey' && <kbd>{formatHotkeyLabel(shortcut.target)}</kbd>}
+            </button>
+          ))}
         </div>
-      )}
+
+        <button
+          className={`floating-mode-toggle ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
+          type="button"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+          }}
+          onPointerUp={handleModeTogglePointerUp}
+          title={launcherMode === 'hotkey' ? '切换到启动模式' : '切换到快捷键模式'}
+        >
+          {launcherMode === 'hotkey' ? '↗' : '⌘'}
+        </button>
+
+        <button
+          className={`floating-config ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
+          type="button"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+          }}
+          onPointerUp={handleConfigPointerUp}
+          title="打开配置面板"
+        >
+          ⚙
+        </button>
+
+        {absorbedName && (
+          <div className="floating-absorb-toast">
+            {absorbedName.slice(0, 10)}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

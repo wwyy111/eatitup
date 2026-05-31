@@ -21,8 +21,7 @@ const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const APP_NAME = '浮点启动台'
 const SELF_PROCESS_IDS = new Set([process.pid])
-const FLOATING_WINDOW_WIDTH = 640
-const FLOATING_WINDOW_HEIGHT = 640
+const FLOATING_BUTTON_SIZE = 64
 const LEGACY_FLOATING_WINDOW_WIDTH = 286
 const LEGACY_FLOATING_WINDOW_HEIGHT = 220
 const ABSORB_TARGET_RADIUS = 74
@@ -54,10 +53,6 @@ let windowDropCandidate: {
   maxDistance: number
   snapshotPromise: Promise<CapturedWindowInfo | null> | null
 } | null = null
-let dragState: {
-  windowStartPosition: [number, number]
-  pointerStartPosition: { x: number; y: number }
-} | null = null
 
 if (!gotSingleInstanceLock) {
   app.quit()
@@ -72,22 +67,27 @@ app.on('second-instance', () => {
 })
 
 function createFloatingWindow() {
-  const savedPosition = store.get('windowPosition', { x: -1, y: -1 }) as { x: number; y: number }
-  const savedWindowSize = store.get('windowSize', {
-    width: LEGACY_FLOATING_WINDOW_WIDTH,
-    height: LEGACY_FLOATING_WINDOW_HEIGHT
-  }) as { width: number; height: number }
+  const buttonPosition = getStoredFloatingButtonPosition()
+  const display = screen.getDisplayNearestPoint(buttonPosition)
+  const bounds = getFloatingOverlayBounds(display.bounds)
+  const clampedButtonPosition = clampFloatingButtonScreenPosition(buttonPosition, bounds)
 
   floatingWindow = new BrowserWindow({
-    width: FLOATING_WINDOW_WIDTH,
-    height: FLOATING_WINDOW_HEIGHT,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
     alwaysOnTop: true,
+    type: 'panel',
     resizable: false,
+    movable: false,
     focusable: false,
+    fullscreenable: false,
+    enableLargerThanScreen: true,
     skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -95,6 +95,9 @@ function createFloatingWindow() {
       nodeIntegration: false
     }
   })
+  floatingWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  floatingWindow.setAlwaysOnTop(true, 'screen-saver')
+  floatingWindow.setBounds(bounds)
 
   // 加载悬浮按钮页面
   if (process.env.NODE_ENV === 'development') {
@@ -105,31 +108,97 @@ function createFloatingWindow() {
     })
   }
 
-  // 设置窗口位置
-  if (savedPosition.x !== -1 && savedPosition.y !== -1) {
-    const adjustedX = savedPosition.x + Math.round((savedWindowSize.width - FLOATING_WINDOW_WIDTH) / 2)
-    const adjustedY = savedPosition.y + Math.round((savedWindowSize.height - FLOATING_WINDOW_HEIGHT) / 2)
-    floatingWindow.setPosition(adjustedX, adjustedY)
-  } else {
-    // 默认位置：屏幕右上角
-    const primaryDisplay = screen.getPrimaryDisplay()
-    const { x, y, width } = primaryDisplay.workArea
-    floatingWindow.setPosition(x + width - FLOATING_WINDOW_WIDTH - 20, y + 20)
-  }
-
-  store.set('windowSize', { width: FLOATING_WINDOW_WIDTH, height: FLOATING_WINDOW_HEIGHT })
+  store.set('floatingButtonPosition', clampedButtonPosition)
+  store.set('windowPosition', { x: bounds.x, y: bounds.y })
+  store.set('windowSize', { width: bounds.width, height: bounds.height })
   setFloatingMousePassthrough(true)
-
-  floatingWindow.on('move', () => {
-    const [x, y] = floatingWindow!.getPosition()
-    store.set('windowPosition', { x, y })
-    store.set('windowSize', { width: FLOATING_WINDOW_WIDTH, height: FLOATING_WINDOW_HEIGHT })
-  })
 
   floatingWindow.on('closed', () => {
     floatingWindow = null
     floatingWindowIsPassthrough = false
   })
+}
+
+function getStoredFloatingButtonPosition() {
+  const storedButtonPosition = store.get('floatingButtonPosition') as { x?: unknown; y?: unknown } | undefined
+  if (
+    storedButtonPosition
+    && Number.isFinite(storedButtonPosition.x)
+    && Number.isFinite(storedButtonPosition.y)
+  ) {
+    return {
+      x: Number(storedButtonPosition.x),
+      y: Number(storedButtonPosition.y)
+    }
+  }
+
+  const savedPosition = store.get('windowPosition', { x: -1, y: -1 }) as { x: number; y: number }
+  const savedWindowSize = store.get('windowSize', {
+    width: LEGACY_FLOATING_WINDOW_WIDTH,
+    height: LEGACY_FLOATING_WINDOW_HEIGHT
+  }) as { width: number; height: number }
+
+  if (savedPosition.x !== -1 && savedPosition.y !== -1) {
+    return {
+      x: savedPosition.x + savedWindowSize.width / 2,
+      y: savedPosition.y + savedWindowSize.height / 2
+    }
+  }
+
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { x, y, width } = primaryDisplay.bounds
+  return {
+    x: x + width - 120,
+    y: y + 120
+  }
+}
+
+function clampFloatingButtonScreenPosition(
+  position: { x: number; y: number },
+  bounds = floatingWindow?.getBounds() ?? screen.getDisplayNearestPoint(position).bounds
+) {
+  const margin = FLOATING_BUTTON_SIZE / 2
+  return {
+    x: Math.max(bounds.x + margin, Math.min(bounds.x + bounds.width - margin, position.x)),
+    y: Math.max(bounds.y + margin, Math.min(bounds.y + bounds.height - margin, position.y))
+  }
+}
+
+function getFloatingOverlayBounds(bounds: { x: number; y: number; width: number; height: number }) {
+  if (process.platform === 'darwin' && bounds.x === 0 && bounds.y > 0) {
+    return {
+      ...bounds,
+      y: 0
+    }
+  }
+
+  return bounds
+}
+
+function getFloatingButtonLocalPosition() {
+  const bounds = floatingWindow?.getBounds() ?? screen.getPrimaryDisplay().bounds
+  const position = clampFloatingButtonScreenPosition(getStoredFloatingButtonPosition(), bounds)
+  store.set('floatingButtonPosition', position)
+
+  return {
+    x: position.x - bounds.x,
+    y: position.y - bounds.y
+  }
+}
+
+function saveFloatingButtonLocalPosition(position: { x: number; y: number }) {
+  if (!floatingWindow) {
+    return getStoredFloatingButtonPosition()
+  }
+
+  const bounds = floatingWindow.getBounds()
+  const nextPosition = clampFloatingButtonScreenPosition({
+    x: bounds.x + position.x,
+    y: bounds.y + position.y
+  }, bounds)
+
+  store.set('floatingButtonPosition', nextPosition)
+  return nextPosition
 }
 
 function setFloatingMousePassthrough(isPassthrough: boolean) {
@@ -217,15 +286,7 @@ function isPointInsideFloatingWindow(point: { x: number; y: number }) {
 }
 
 function getFloatingWindowCenter() {
-  if (!floatingWindow) {
-    return null
-  }
-
-  const bounds = floatingWindow.getBounds()
-  return {
-    x: bounds.x + bounds.width / 2,
-    y: bounds.y + bounds.height / 2
-  }
+  return getStoredFloatingButtonPosition()
 }
 
 function isPointInFloatingAbsorbZone(point: { x: number; y: number }) {
@@ -464,7 +525,7 @@ function handleWindowDropMonitorLine(line: string) {
   }
 
   if (eventType === 'down') {
-    if (isPointInsideFloatingWindow({ x, y })) {
+    if (isPointInFloatingAbsorbZone({ x, y })) {
       windowDropCandidate = null
       return
     }
@@ -1349,6 +1410,24 @@ app.whenReady().then(() => {
     setHotkeyRecording(Boolean(isRecording))
   })
 
+  ipcMain.handle('floating-position:get', async () => getFloatingButtonLocalPosition())
+
+  ipcMain.handle('floating-position:set', async (_event, position: { x?: unknown; y?: unknown }) => {
+    const x = Number(position?.x)
+    const y = Number(position?.y)
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return getFloatingButtonLocalPosition()
+    }
+
+    const nextPosition = saveFloatingButtonLocalPosition({ x, y })
+    const bounds = floatingWindow?.getBounds() ?? screen.getPrimaryDisplay().bounds
+    return {
+      x: nextPosition.x - bounds.x,
+      y: nextPosition.y - bounds.y
+    }
+  })
+
   ipcMain.handle('open-main-window', async () => {
     showMainWindow()
   })
@@ -1379,39 +1458,30 @@ app.whenReady().then(() => {
     setFloatingMousePassthrough(Boolean(isPassthrough))
   })
 
-  ipcMain.on('floating-drag-start', (_event, pointerPosition: { x: number; y: number }) => {
+  ipcMain.on('floating-drag-start', () => {
     if (!floatingWindow) return
 
     suppressMainWindowActivation()
     setFloatingMousePassthrough(false)
-
-    dragState = {
-      windowStartPosition: floatingWindow.getPosition() as [number, number],
-      pointerStartPosition: pointerPosition
-    }
   })
 
-  ipcMain.on('floating-drag-move', (_event, pointerPosition: { x: number; y: number }) => {
-    if (!floatingWindow || !dragState) return
+  ipcMain.on('floating-drag-move', () => {
+    if (!floatingWindow) return
 
     suppressMainWindowActivation()
-
-    const dx = pointerPosition.x - dragState.pointerStartPosition.x
-    const dy = pointerPosition.y - dragState.pointerStartPosition.y
-    const [startX, startY] = dragState.windowStartPosition
-
-    floatingWindow.setPosition(Math.round(startX + dx), Math.round(startY + dy))
   })
 
-  ipcMain.on('floating-drag-end', () => {
+  ipcMain.on('floating-drag-end', (_event, position?: { x?: unknown; y?: unknown }) => {
     suppressMainWindowActivation(1200)
 
-    if (floatingWindow) {
-      const [x, y] = floatingWindow.getPosition()
-      store.set('windowPosition', { x, y })
-    }
+    if (position) {
+      const x = Number(position.x)
+      const y = Number(position.y)
 
-    dragState = null
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        saveFloatingButtonLocalPosition({ x, y })
+      }
+    }
   })
 
   app.on('activate', () => {

@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   openFeishuMeeting: () => ipcRenderer.invoke('open-feishu-meeting'),
   openMainWindow: () => ipcRenderer.invoke('open-main-window'),
+  getFloatingPosition: () => ipcRenderer.invoke('floating-position:get'),
+  setFloatingPosition: (position: { x: number; y: number }) => ipcRenderer.invoke('floating-position:set', position),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
@@ -30,7 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveFloatingWindow: (pointerPosition: { x: number; y: number }) => {
     ipcRenderer.send('floating-drag-move', pointerPosition)
   },
-  endFloatingDrag: () => ipcRenderer.send('floating-drag-end'),
+  endFloatingDrag: (position?: { x: number; y: number }) => ipcRenderer.send('floating-drag-end', position),
   setFloatingMousePassthrough: (isPassthrough: boolean) => {
     ipcRenderer.send('floating-mouse-passthrough', isPassthrough)
   }
