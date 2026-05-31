@@ -361,8 +361,8 @@ code {
 
 .floating-mode-toggle {
   position: absolute;
-  left: -50px;
-  top: 58px;
+  left: var(--utility-x, -50px);
+  top: var(--utility-y, 58px);
   width: 34px;
   height: 34px;
   border-radius: 999px;
@@ -389,8 +389,8 @@ code {
 
 .floating-config {
   position: absolute;
-  left: 50px;
-  top: 58px;
+  left: var(--utility-x, 50px);
+  top: var(--utility-y, 58px);
   width: 34px;
   height: 34px;
   border-radius: 999px;

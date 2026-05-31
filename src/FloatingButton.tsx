@@ -8,6 +8,7 @@ const SMALL_BUTTON_HIT_RADIUS = 24
 const BURST_BUTTON_HIT_RADIUS = 28
 const EXPANDED_KEEPALIVE_RADIUS = 126
 const BUTTON_EDGE_MARGIN = 32
+const EDGE_ADAPT_THRESHOLD = 168
 
 type TearState = {
   shortcutId: string
@@ -16,6 +17,13 @@ type TearState = {
   offsetY: number
   isPastThreshold: boolean
 } | null
+
+type FloatingEdgeLayout = {
+  isNearLeft: boolean
+  isNearRight: boolean
+  isNearTop: boolean
+  isNearBottom: boolean
+}
 
 const FloatingButton = () => {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS)
@@ -354,35 +362,70 @@ const FloatingButton = () => {
     await handleLaunchButtonPointerUp(event, shortcutId)
   }
 
-  const getBurstButtonStyle = (index: number, total: number, accent: string) => {
-    const radius = total <= 3 ? 70 : 78
-    const startAngle = total <= 3 ? -140 : -155
-    const endAngle = total <= 3 ? -40 : 155
-    const angle = total === 1
-      ? -90
-      : startAngle + ((endAngle - startAngle) / (total - 1)) * index
-    const radians = (angle * Math.PI) / 180
+  const getEdgeLayout = (position: { x: number; y: number }): FloatingEdgeLayout => ({
+    isNearLeft: position.x < EDGE_ADAPT_THRESHOLD,
+    isNearRight: position.x > window.innerWidth - EDGE_ADAPT_THRESHOLD,
+    isNearTop: position.y < EDGE_ADAPT_THRESHOLD,
+    isNearBottom: position.y > window.innerHeight - EDGE_ADAPT_THRESHOLD
+  })
 
-    return {
-      '--accent': accent,
-      '--burst-x': `${Math.cos(radians) * radius}px`,
-      '--burst-y': `${Math.sin(radians) * radius}px`,
-      '--burst-delay': `${index * 18}ms`
-    } as CSSProperties
+  const getBurstAngles = (total: number, layout: FloatingEdgeLayout) => {
+    const narrow = total <= 3
+
+    if (layout.isNearTop && layout.isNearRight) return narrow ? [110, 160] : [95, 175]
+    if (layout.isNearTop && layout.isNearLeft) return narrow ? [20, 70] : [5, 85]
+    if (layout.isNearBottom && layout.isNearRight) return narrow ? [-160, -110] : [-175, -95]
+    if (layout.isNearBottom && layout.isNearLeft) return narrow ? [-70, -20] : [-85, -5]
+    if (layout.isNearRight) return narrow ? [145, 215] : [115, 245]
+    if (layout.isNearLeft) return narrow ? [-35, 35] : [-65, 65]
+    if (layout.isNearTop) return narrow ? [60, 120] : [25, 155]
+    if (layout.isNearBottom) return narrow ? [-120, -60] : [-155, -25]
+
+    return narrow ? [-140, -40] : [-155, 155]
   }
 
-  const getBurstButtonOffset = (index: number, total: number) => {
+  const getBurstButtonOffset = (
+    index: number,
+    total: number,
+    position = buttonPositionRef.current
+  ) => {
     const radius = total <= 3 ? 70 : 78
-    const startAngle = total <= 3 ? -140 : -155
-    const endAngle = total <= 3 ? -40 : 155
+    const [startAngle, endAngle] = getBurstAngles(total, getEdgeLayout(position))
     const angle = total === 1
-      ? -90
+      ? (startAngle + endAngle) / 2
       : startAngle + ((endAngle - startAngle) / (total - 1)) * index
     const radians = (angle * Math.PI) / 180
 
     return {
       x: Math.cos(radians) * radius,
       y: Math.sin(radians) * radius
+    }
+  }
+
+  const getBurstButtonStyle = (index: number, total: number, accent: string) => {
+    const offset = getBurstButtonOffset(index, total, buttonPosition)
+
+    return {
+      '--accent': accent,
+      '--burst-x': `${offset.x}px`,
+      '--burst-y': `${offset.y}px`,
+      '--burst-delay': `${index * 18}ms`
+    } as CSSProperties
+  }
+
+  const getUtilityButtonOffsets = (position = buttonPositionRef.current) => {
+    const layout = getEdgeLayout(position)
+    const y = layout.isNearBottom ? -58 : 58
+
+    return {
+      mode: {
+        x: layout.isNearRight ? -58 : layout.isNearLeft ? 42 : -50,
+        y
+      },
+      config: {
+        x: layout.isNearRight ? -108 : layout.isNearLeft ? 92 : 50,
+        y
+      }
     }
   }
 
@@ -402,8 +445,9 @@ const FloatingButton = () => {
       let isOverControl = isOverMainButton
 
       if (isExpandedRef.current || shouldStayExpanded || isOverMainButton) {
-        const modeCenter = { x: center.x - 50, y: center.y + 58 }
-        const configCenter = { x: center.x + 50, y: center.y + 58 }
+        const utilityOffsets = getUtilityButtonOffsets(center)
+        const modeCenter = { x: center.x + utilityOffsets.mode.x, y: center.y + utilityOffsets.mode.y }
+        const configCenter = { x: center.x + utilityOffsets.config.x, y: center.y + utilityOffsets.config.y }
         const isOverMode = getDistance(point, modeCenter) <= SMALL_BUTTON_HIT_RADIUS
         const isOverConfig = getDistance(point, configCenter) <= SMALL_BUTTON_HIT_RADIUS
         const isOverBurst = burstShortcutsRef.current.some((_shortcut, index) => {
@@ -533,6 +577,10 @@ const FloatingButton = () => {
 
         <button
           className={`floating-mode-toggle ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
+          style={{
+            '--utility-x': `${getUtilityButtonOffsets(buttonPosition).mode.x}px`,
+            '--utility-y': `${getUtilityButtonOffsets(buttonPosition).mode.y}px`
+          } as CSSProperties}
           type="button"
           onPointerDown={(event) => {
             event.stopPropagation()
@@ -545,6 +593,10 @@ const FloatingButton = () => {
 
         <button
           className={`floating-config ${launcherMode === 'hotkey' ? 'is-hotkey-mode' : ''}`}
+          style={{
+            '--utility-x': `${getUtilityButtonOffsets(buttonPosition).config.x}px`,
+            '--utility-y': `${getUtilityButtonOffsets(buttonPosition).config.y}px`
+          } as CSSProperties}
           type="button"
           onPointerDown={(event) => {
             event.stopPropagation()
