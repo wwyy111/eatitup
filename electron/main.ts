@@ -213,9 +213,9 @@ function setFloatingMousePassthrough(isPassthrough: boolean) {
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1060,
-    height: 720,
-    minWidth: 900,
+    width: 1280,
+    height: 780,
+    minWidth: 1060,
     minHeight: 620,
     title: APP_NAME,
     backgroundColor: '#f6f7fb',

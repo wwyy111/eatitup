@@ -230,25 +230,25 @@ const MainWindow = () => {
           </div>
         </div>
 
-        <nav className="launcher-nav" aria-label="启动台导航">
-          <button className="is-active" type="button">
-            <span>⌂</span>
-            首页
-          </button>
-          <button type="button">
-            <span>⌘</span>
-            快捷键
-          </button>
-          <button type="button">
-            <span>◇</span>
-            入口库
-          </button>
-        </nav>
-
         <div className="sidebar-card">
-          <span>当前启用</span>
-          <strong>{enabledShortcuts.length} / {shortcuts.length}</strong>
-          <p>悬浮球会优先显示已启用的快捷项。</p>
+          <span>当前悬浮球</span>
+          <strong>{launcherMode === 'hotkey' ? '快捷键模式' : activeShortcut?.name ?? '未选择'}</strong>
+          <p>悬停展开，点击圆形按钮即可执行；拖出按钮可停用快捷项。</p>
+        </div>
+
+        <div className="sidebar-metrics" aria-label="快捷项统计">
+          <div>
+            <span>{enabledShortcuts.length}</span>
+            <p>启用</p>
+          </div>
+          <div>
+            <span>{launchShortcutCount}</span>
+            <p>启动</p>
+          </div>
+          <div>
+            <span>{hotkeyShortcutCount}</span>
+            <p>快捷键</p>
+          </div>
         </div>
       </aside>
 
@@ -256,9 +256,9 @@ const MainWindow = () => {
         <div className="launcher-page">
           <div className="launcher-toolbar">
             <div>
-              <span className="eyebrow">当前模式</span>
-              <h2>{launcherMode === 'hotkey' ? '快捷键模式' : activeShortcut?.name ?? '未选择'}</h2>
-              <p>把页面、App 和快捷键收进一个轻量的悬浮球。</p>
+              <span className="eyebrow">配置工作台</span>
+              <h2>管理悬浮球快捷项</h2>
+              <p>添加、启停、运行和模式切换都应该在这里一眼完成。</p>
             </div>
             <div className="mode-actions">
               <div className="segmented-control">
@@ -287,47 +287,14 @@ const MainWindow = () => {
             </div>
           </div>
 
-          <section className="launcher-overview" aria-label="启动台概览">
-            <article className="overview-card overview-primary">
-              <div>
-                <span className="overview-icon">◎</span>
-                <strong>{activeShortcut?.name ?? '未选择'}</strong>
-                <p>{activeShortcut ? `${SHORTCUT_KIND_LABEL[activeShortcut.kind]} · ${activeShortcut.target}` : '选择一个快捷项开始。'}</p>
-              </div>
-              <button type="button" onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}>
-                立即运行
-              </button>
-            </article>
-
-            <div className="stat-grid">
-              <article>
-                <span>⌁</span>
-                <strong>{enabledShortcuts.length}</strong>
-                <p>启用快捷项</p>
-              </article>
-              <article>
-                <span>↗</span>
-                <strong>{launchShortcutCount}</strong>
-                <p>启动入口</p>
-              </article>
-              <article>
-                <span>⌘</span>
-                <strong>{hotkeyShortcutCount}</strong>
-                <p>快捷键动作</p>
-              </article>
-              <article>
-                <span>●</span>
-                <strong>{launcherMode === 'hotkey' ? 'Key' : 'Go'}</strong>
-                <p>悬浮球模式</p>
-              </article>
-            </div>
-          </section>
-
           <div className="launcher-grid">
             <section className="shortcut-panel">
               <div className="section-heading">
-                <h3>快捷项</h3>
-                <span>{enabledShortcuts.length} 个启用</span>
+                <div>
+                  <h3>快捷项</h3>
+                  <p>选择默认启动项，或直接运行、删除、停用。</p>
+                </div>
+                <span>{enabledShortcuts.length} / {shortcuts.length} 启用</span>
               </div>
 
               <div className="shortcut-list">
