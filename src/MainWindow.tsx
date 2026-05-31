@@ -68,6 +68,21 @@ const MainWindow = () => {
     [activeShortcutId, shortcuts]
   )
 
+  const enabledShortcuts = useMemo(
+    () => shortcuts.filter((shortcut) => shortcut.enabled),
+    [shortcuts]
+  )
+
+  const launchShortcutCount = useMemo(
+    () => enabledShortcuts.filter((shortcut) => shortcut.kind !== 'hotkey').length,
+    [enabledShortcuts]
+  )
+
+  const hotkeyShortcutCount = useMemo(
+    () => enabledShortcuts.filter((shortcut) => shortcut.kind === 'hotkey').length,
+    [enabledShortcuts]
+  )
+
   useEffect(() => {
     let isMounted = true
 
@@ -207,110 +222,171 @@ const MainWindow = () => {
   return (
     <main className="launcher-shell">
       <aside className="launcher-sidebar">
-        <div className="brand-mark" aria-hidden="true">浮</div>
-        <div>
-          <h1>浮点启动台</h1>
-          <p>把常用入口收进一个可切换的悬浮球。</p>
+        <div className="brand-row">
+          <div className="brand-mark" aria-hidden="true">浮</div>
+          <div>
+            <h1>浮点启动台</h1>
+            <span>Local</span>
+          </div>
+        </div>
+
+        <nav className="launcher-nav" aria-label="启动台导航">
+          <button className="is-active" type="button">
+            <span>⌂</span>
+            首页
+          </button>
+          <button type="button">
+            <span>⌘</span>
+            快捷键
+          </button>
+          <button type="button">
+            <span>◇</span>
+            入口库
+          </button>
+        </nav>
+
+        <div className="sidebar-card">
+          <span>当前启用</span>
+          <strong>{enabledShortcuts.length} / {shortcuts.length}</strong>
+          <p>悬浮球会优先显示已启用的快捷项。</p>
         </div>
       </aside>
 
       <section className="launcher-content">
-        <div className="launcher-toolbar">
-          <div>
-            <span className="eyebrow">当前模式</span>
-            <h2>{launcherMode === 'hotkey' ? '快捷键模式' : activeShortcut?.name ?? '未选择'}</h2>
-          </div>
-          <div className="mode-actions">
-            <div className="segmented-control">
-              <button
-                className={launcherMode === 'launch' ? 'is-selected' : ''}
-                type="button"
-                onClick={() => handleSetLauncherMode('launch')}
-              >
-                启动
-              </button>
-              <button
-                className={launcherMode === 'hotkey' ? 'is-selected' : ''}
-                type="button"
-                onClick={() => handleSetLauncherMode('hotkey')}
-              >
-                快捷键
-              </button>
+        <div className="launcher-page">
+          <div className="launcher-toolbar">
+            <div>
+              <span className="eyebrow">当前模式</span>
+              <h2>{launcherMode === 'hotkey' ? '快捷键模式' : activeShortcut?.name ?? '未选择'}</h2>
+              <p>把页面、App 和快捷键收进一个轻量的悬浮球。</p>
             </div>
-            <button
-              className="primary-action"
-              type="button"
-              onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}
-            >
-              运行
-            </button>
-          </div>
-        </div>
-
-        <div className="launcher-grid">
-          <section className="shortcut-panel">
-            <div className="section-heading">
-              <h3>快捷项</h3>
-              <span>{shortcuts.filter((shortcut) => shortcut.enabled).length} 个启用</span>
-            </div>
-
-            <div className="shortcut-list">
-              {shortcuts.length === 0 && (
-                <div className="empty-shortcut-state">
-                  还没有快捷项
-                </div>
-              )}
-
-              {shortcuts.map((shortcut) => (
-                <article
-                  className={`shortcut-row ${shortcut.id === activeShortcutId ? 'is-active' : ''}`}
-                  key={shortcut.id}
-                  style={{ '--accent': shortcut.accent } as CSSProperties}
+            <div className="mode-actions">
+              <div className="segmented-control">
+                <button
+                  className={launcherMode === 'launch' ? 'is-selected' : ''}
+                  type="button"
+                  onClick={() => handleSetLauncherMode('launch')}
                 >
-                  <button
-                    className="shortcut-identity"
-                    type="button"
-                    onClick={() => handleSetActiveShortcut(shortcut.id)}
-                  >
-                    <span className="shortcut-icon">{shortcut.symbol.slice(0, 2)}</span>
-                    <span>
-                      <strong>{shortcut.name}</strong>
-                      <small>{SHORTCUT_KIND_LABEL[shortcut.kind]} · {shortcut.target}</small>
-                    </span>
-                  </button>
+                  启动
+                </button>
+                <button
+                  className={launcherMode === 'hotkey' ? 'is-selected' : ''}
+                  type="button"
+                  onClick={() => handleSetLauncherMode('hotkey')}
+                >
+                  快捷键
+                </button>
+              </div>
+              <button
+                className="primary-action"
+                type="button"
+                onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}
+              >
+                运行
+              </button>
+            </div>
+          </div>
 
-                  <div className="shortcut-actions">
-                    <button type="button" onClick={() => handleRunShortcut(shortcut.id)}>运行</button>
-                    <button
-                      className="danger-action"
-                      type="button"
-                      onClick={() => handleDeleteShortcut(shortcut.id)}
-                      aria-label={`删除 ${shortcut.name}`}
-                      title="删除"
-                    >
-                      ×
-                    </button>
-                    <label className="toggle">
-                      <input
-                        type="checkbox"
-                        checked={shortcut.enabled}
-                        onChange={() => handleToggleShortcut(shortcut.id)}
-                      />
-                      <span />
-                    </label>
-                  </div>
-                </article>
-              ))}
+          <section className="launcher-overview" aria-label="启动台概览">
+            <article className="overview-card overview-primary">
+              <div>
+                <span className="overview-icon">◎</span>
+                <strong>{activeShortcut?.name ?? '未选择'}</strong>
+                <p>{activeShortcut ? `${SHORTCUT_KIND_LABEL[activeShortcut.kind]} · ${activeShortcut.target}` : '选择一个快捷项开始。'}</p>
+              </div>
+              <button type="button" onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}>
+                立即运行
+              </button>
+            </article>
+
+            <div className="stat-grid">
+              <article>
+                <span>⌁</span>
+                <strong>{enabledShortcuts.length}</strong>
+                <p>启用快捷项</p>
+              </article>
+              <article>
+                <span>↗</span>
+                <strong>{launchShortcutCount}</strong>
+                <p>启动入口</p>
+              </article>
+              <article>
+                <span>⌘</span>
+                <strong>{hotkeyShortcutCount}</strong>
+                <p>快捷键动作</p>
+              </article>
+              <article>
+                <span>●</span>
+                <strong>{launcherMode === 'hotkey' ? 'Key' : 'Go'}</strong>
+                <p>悬浮球模式</p>
+              </article>
             </div>
           </section>
 
-          <section className="config-panel">
-            <div className="section-heading">
-              <h3>添加入口</h3>
-              <span>{isSaving ? '保存中' : '本地保存'}</span>
-            </div>
+          <div className="launcher-grid">
+            <section className="shortcut-panel">
+              <div className="section-heading">
+                <h3>快捷项</h3>
+                <span>{enabledShortcuts.length} 个启用</span>
+              </div>
 
-            <form className="shortcut-form" onSubmit={handleAddShortcut}>
+              <div className="shortcut-list">
+                {shortcuts.length === 0 && (
+                  <div className="empty-shortcut-state">
+                    还没有快捷项
+                  </div>
+                )}
+
+                {shortcuts.map((shortcut) => (
+                  <article
+                    className={`shortcut-row ${shortcut.id === activeShortcutId ? 'is-active' : ''}`}
+                    key={shortcut.id}
+                    style={{ '--accent': shortcut.accent } as CSSProperties}
+                  >
+                    <button
+                      className="shortcut-identity"
+                      type="button"
+                      onClick={() => handleSetActiveShortcut(shortcut.id)}
+                    >
+                      <span className="shortcut-icon">{shortcut.symbol.slice(0, 2)}</span>
+                      <span>
+                        <strong>{shortcut.name}</strong>
+                        <small>{SHORTCUT_KIND_LABEL[shortcut.kind]} · {shortcut.target}</small>
+                      </span>
+                    </button>
+
+                    <div className="shortcut-actions">
+                      <button type="button" onClick={() => handleRunShortcut(shortcut.id)}>运行</button>
+                      <button
+                        className="danger-action"
+                        type="button"
+                        onClick={() => handleDeleteShortcut(shortcut.id)}
+                        aria-label={`删除 ${shortcut.name}`}
+                        title="删除"
+                      >
+                        ×
+                      </button>
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={shortcut.enabled}
+                          onChange={() => handleToggleShortcut(shortcut.id)}
+                        />
+                        <span />
+                      </label>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="config-panel">
+              <div className="section-heading">
+                <h3>添加入口</h3>
+                <span>{isSaving ? '保存中' : '本地保存'}</span>
+              </div>
+
+              <form className="shortcut-form" onSubmit={handleAddShortcut}>
               <label>
                 名称
                 <input
@@ -405,8 +481,9 @@ const MainWindow = () => {
               <button className="primary-action" type="submit">
                 添加快捷项
               </button>
-            </form>
-          </section>
+              </form>
+            </section>
+          </div>
         </div>
       </section>
     </main>
