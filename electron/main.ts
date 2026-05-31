@@ -255,6 +255,8 @@ function createMainWindow() {
 }
 
 function showMainWindow() {
+  ensureDockVisible()
+
   if (!mainWindow) {
     createMainWindow()
     return
@@ -262,6 +264,16 @@ function showMainWindow() {
 
   mainWindow.show()
   mainWindow.focus()
+}
+
+function ensureDockVisible() {
+  if (process.platform !== 'darwin') {
+    return
+  }
+
+  app.setActivationPolicy('regular')
+  app.dock.show()
+  app.dock.setIcon(getAssetPath('app-icon.png'))
 }
 
 function isCursorInsideFloatingWindow() {
@@ -1360,10 +1372,7 @@ function createAppMenu() {
 // 应用启动
 app.whenReady().then(() => {
   app.setName(APP_NAME)
-
-  if (process.platform === 'darwin') {
-    app.dock.setIcon(getAssetPath('app-icon.png'))
-  }
+  ensureDockVisible()
 
   createFloatingWindow()
   createMainWindow()
