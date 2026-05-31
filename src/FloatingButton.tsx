@@ -11,6 +11,7 @@ const FloatingButton = () => {
   const [isDragging, setIsDragging] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
+  const [absorbedName, setAbsorbedName] = useState('')
   const [pointerOffset, setPointerOffset] = useState({ x: 0, y: 0 })
   const pointerStartPos = useRef({ x: 0, y: 0 })
   const hasMoved = useRef(false)
@@ -64,10 +65,16 @@ const FloatingButton = () => {
     }
 
     loadShortcuts()
+    const unsubscribeAbsorbed = window.electronAPI?.onShortcutAbsorbed((name) => {
+      setAbsorbedName(name)
+      loadShortcuts()
+      window.setTimeout(() => setAbsorbedName(''), 1400)
+    })
     const refreshTimer = window.setInterval(loadShortcuts, 2500)
 
     return () => {
       isMounted = false
+      unsubscribeAbsorbed?.()
       window.clearInterval(refreshTimer)
     }
   }, [])
@@ -316,7 +323,8 @@ const FloatingButton = () => {
           launcherMode === 'hotkey' ? 'is-hotkey-mode' : '',
           isHovering ? 'is-hovering' : '',
           isDragging ? 'is-dragging' : '',
-          isPressed ? 'is-pressed' : ''
+          isPressed ? 'is-pressed' : '',
+          absorbedName ? 'is-absorbing' : ''
         ].join(' ')}
         style={dynamicStyle}
         onPointerDown={handlePointerDown}
@@ -391,6 +399,12 @@ const FloatingButton = () => {
       >
         ⚙
       </button>
+
+      {absorbedName && (
+        <div className="floating-absorb-toast">
+          {absorbedName.slice(0, 10)}
+        </div>
+      )}
     </div>
   )
 }

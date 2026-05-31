@@ -7,11 +7,16 @@ if (process.platform !== 'darwin') {
 }
 
 const projectRoot = path.join(__dirname, '..')
-const sourcePath = path.join(__dirname, 'HotkeyRecorder.swift')
 const outputDir = path.join(projectRoot, 'dist-electron')
-const outputPath = path.join(outputDir, 'HotkeyRecorder')
 
 fs.mkdirSync(outputDir, { recursive: true })
-execFileSync('/usr/bin/swiftc', [sourcePath, '-o', outputPath], {
-  stdio: 'inherit'
-})
+
+for (const helperName of ['HotkeyRecorder', 'WindowDropMonitor']) {
+  execFileSync('/usr/bin/swiftc', [
+    path.join(__dirname, `${helperName}.swift`),
+    '-o',
+    path.join(outputDir, helperName)
+  ], {
+    stdio: 'inherit'
+  })
+}

@@ -41,12 +41,17 @@
       "dist/**/*",
       "dist-electron/**/*",
       "electron/HotkeyRecorder.swift",
+      "electron/WindowDropMonitor.swift",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "dist-electron/HotkeyRecorder",
         "to": "HotkeyRecorder"
+      },
+      {
+        "from": "dist-electron/WindowDropMonitor",
+        "to": "WindowDropMonitor"
       }
     ],
     "mac": {

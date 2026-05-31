@@ -5,11 +5,29 @@ import * as path from 'path'
 import Store from 'electron-store'
 import { DEFAULT_SHORTCUTS, type LauncherMode, type Shortcut } from '../src/shortcuts'
 
+type CapturedWindowInfo = {
+  appName: string
+  bundleId: string
+  title: string
+  url: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 const store = new Store()
 const FEISHU_MINUTES_HOME_URL = process.env.FEISHU_MINUTES_HOME_URL || 'https://www.feishu.cn/minutes/home'
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const APP_NAME = '浮点启动台'
 const SELF_PROCESS_IDS = new Set([process.pid])
+const FLOATING_WINDOW_WIDTH = 420
+const FLOATING_WINDOW_HEIGHT = 420
+const LEGACY_FLOATING_WINDOW_WIDTH = 286
+const LEGACY_FLOATING_WINDOW_HEIGHT = 220
+const ABSORB_TARGET_RADIUS = 74
+const ABSORB_MIN_DRAG_DISTANCE = 80
+const SELF_BUNDLE_IDS = new Set(['com.github.Electron', 'com.float.launcher', 'local.float-launcher.launcher'])
 const GLOBAL_SHORTCUTS_TO_SWALLOW_DURING_RECORDING = [
   { accelerator: 'CommandOrControl+Shift+3', target: 'Command+Shift+3' },
   { accelerator: 'CommandOrControl+Shift+4', target: 'Command+Shift+4' },
@@ -27,7 +45,14 @@ let lastExternalApp: { name: string; processId: number } | null = null
 let isRecordingHotkey = false
 let hotkeyRecorderProcess: ChildProcess | null = null
 let hotkeyRecorderBuffer = ''
+let windowDropMonitorProcess: ChildProcess | null = null
+let windowDropMonitorBuffer = ''
 let suppressMainWindowActivationUntil = 0
+let windowDropCandidate: {
+  startPosition: { x: number; y: number }
+  maxDistance: number
+  snapshotPromise: Promise<CapturedWindowInfo | null> | null
+} | null = null
 let dragState: {
   windowStartPosition: [number, number]
   pointerStartPosition: { x: number; y: number }
@@ -47,10 +72,14 @@ app.on('second-instance', () => {
 
 function createFloatingWindow() {
   const savedPosition = store.get('windowPosition', { x: -1, y: -1 }) as { x: number; y: number }
+  const savedWindowSize = store.get('windowSize', {
+    width: LEGACY_FLOATING_WINDOW_WIDTH,
+    height: LEGACY_FLOATING_WINDOW_HEIGHT
+  }) as { width: number; height: number }
 
   floatingWindow = new BrowserWindow({
-    width: 286,
-    height: 220,
+    width: FLOATING_WINDOW_WIDTH,
+    height: FLOATING_WINDOW_HEIGHT,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -77,17 +106,22 @@ function createFloatingWindow() {
 
   // 设置窗口位置
   if (savedPosition.x !== -1 && savedPosition.y !== -1) {
-    floatingWindow.setPosition(savedPosition.x, savedPosition.y)
+    const adjustedX = savedPosition.x + Math.round((savedWindowSize.width - FLOATING_WINDOW_WIDTH) / 2)
+    const adjustedY = savedPosition.y + Math.round((savedWindowSize.height - FLOATING_WINDOW_HEIGHT) / 2)
+    floatingWindow.setPosition(adjustedX, adjustedY)
   } else {
     // 默认位置：屏幕右上角
     const primaryDisplay = screen.getPrimaryDisplay()
     const { x, y, width } = primaryDisplay.workArea
-    floatingWindow.setPosition(x + width - 306, y + 20)
+    floatingWindow.setPosition(x + width - FLOATING_WINDOW_WIDTH - 20, y + 20)
   }
+
+  store.set('windowSize', { width: FLOATING_WINDOW_WIDTH, height: FLOATING_WINDOW_HEIGHT })
 
   floatingWindow.on('move', () => {
     const [x, y] = floatingWindow!.getPosition()
     store.set('windowPosition', { x, y })
+    store.set('windowSize', { width: FLOATING_WINDOW_WIDTH, height: FLOATING_WINDOW_HEIGHT })
   })
 
   floatingWindow.on('closed', () => {
@@ -155,11 +189,40 @@ function isCursorInsideFloatingWindow() {
   }
 
   const cursorPosition = screen.getCursorScreenPoint()
+  return isPointInsideFloatingWindow(cursorPosition)
+}
+
+function isPointInsideFloatingWindow(point: { x: number; y: number }) {
+  if (!floatingWindow) {
+    return false
+  }
+
   const floatingBounds = floatingWindow.getBounds()
-  return cursorPosition.x >= floatingBounds.x
-    && cursorPosition.x <= floatingBounds.x + floatingBounds.width
-    && cursorPosition.y >= floatingBounds.y
-    && cursorPosition.y <= floatingBounds.y + floatingBounds.height
+  return point.x >= floatingBounds.x
+    && point.x <= floatingBounds.x + floatingBounds.width
+    && point.y >= floatingBounds.y
+    && point.y <= floatingBounds.y + floatingBounds.height
+}
+
+function getFloatingWindowCenter() {
+  if (!floatingWindow) {
+    return null
+  }
+
+  const bounds = floatingWindow.getBounds()
+  return {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2
+  }
+}
+
+function isPointInFloatingAbsorbZone(point: { x: number; y: number }) {
+  const center = getFloatingWindowCenter()
+  if (!center) {
+    return false
+  }
+
+  return Math.hypot(point.x - center.x, point.y - center.y) <= ABSORB_TARGET_RADIUS
 }
 
 function showMainWindowFromActivation() {
@@ -249,21 +312,25 @@ function setHotkeyRecording(isRecording: boolean) {
   }
 }
 
-function getHotkeyRecorderHelperPath() {
+function getBundledHelperPath(fileName: string) {
   if (process.platform !== 'darwin') {
     return null
   }
 
   const helperPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'HotkeyRecorder')
-    : path.join(__dirname, 'HotkeyRecorder')
+    ? path.join(process.resourcesPath, fileName)
+    : path.join(__dirname, fileName)
 
   if (!fs.existsSync(helperPath)) {
-    console.warn('Hotkey recorder helper not found. Run npm run build to compile it.')
+    console.warn(`${fileName} helper not found. Run npm run build to compile it.`)
     return null
   }
 
   return helperPath
+}
+
+function getHotkeyRecorderHelperPath() {
+  return getBundledHelperPath('HotkeyRecorder')
 }
 
 function startHotkeyRecorderHelper() {
@@ -319,6 +386,108 @@ function stopHotkeyRecorderHelper() {
   hotkeyRecorderProcess = null
   hotkeyRecorderBuffer = ''
   processToStop.kill()
+}
+
+function startWindowDropMonitor() {
+  if (windowDropMonitorProcess || process.platform !== 'darwin') {
+    return
+  }
+
+  const helperPath = getBundledHelperPath('WindowDropMonitor')
+  if (!helperPath) {
+    return
+  }
+
+  windowDropMonitorBuffer = ''
+  const monitorProcess = spawn(helperPath, [], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  windowDropMonitorProcess = monitorProcess
+
+  monitorProcess.stdout?.on('data', (chunk: Buffer) => {
+    windowDropMonitorBuffer += chunk.toString('utf8')
+    const lines = windowDropMonitorBuffer.split(/\r?\n/)
+    windowDropMonitorBuffer = lines.pop() || ''
+
+    for (const line of lines) {
+      handleWindowDropMonitorLine(line.trim())
+    }
+  })
+
+  monitorProcess.stderr?.on('data', (chunk: Buffer) => {
+    const message = chunk.toString('utf8').trim()
+    if (message) {
+      console.warn(`Window drop monitor: ${message}`)
+    }
+  })
+
+  monitorProcess.on('exit', () => {
+    if (windowDropMonitorProcess === monitorProcess) {
+      windowDropMonitorProcess = null
+      windowDropMonitorBuffer = ''
+      windowDropCandidate = null
+    }
+  })
+}
+
+function stopWindowDropMonitor() {
+  if (!windowDropMonitorProcess) {
+    return
+  }
+
+  const processToStop = windowDropMonitorProcess
+  windowDropMonitorProcess = null
+  windowDropMonitorBuffer = ''
+  windowDropCandidate = null
+  processToStop.kill()
+}
+
+function handleWindowDropMonitorLine(line: string) {
+  const [eventType, rawX, rawY] = line.split(' ')
+  const x = Number(rawX)
+  const y = Number(rawY)
+
+  if (!eventType || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return
+  }
+
+  if (eventType === 'down') {
+    if (isPointInsideFloatingWindow({ x, y })) {
+      windowDropCandidate = null
+      return
+    }
+
+    windowDropCandidate = {
+      startPosition: { x, y },
+      maxDistance: 0,
+      snapshotPromise: null
+    }
+    return
+  }
+
+  if (!windowDropCandidate) {
+    return
+  }
+
+  const distance = Math.hypot(x - windowDropCandidate.startPosition.x, y - windowDropCandidate.startPosition.y)
+  windowDropCandidate.maxDistance = Math.max(windowDropCandidate.maxDistance, distance)
+
+  if (eventType === 'drag' && distance >= 12 && !windowDropCandidate.snapshotPromise) {
+    windowDropCandidate.snapshotPromise = captureFrontmostWindowInfo()
+  }
+
+  if (eventType === 'up') {
+    const candidate = windowDropCandidate
+    windowDropCandidate = null
+
+    if (candidate.maxDistance < ABSORB_MIN_DRAG_DISTANCE || !isPointInFloatingAbsorbZone({ x, y })) {
+      return
+    }
+
+    handleExternalWindowAbsorb(candidate.snapshotPromise).catch((error) => {
+      console.error('吸收窗口失败:', error)
+    })
+  }
 }
 
 function getAssetPath(fileName: string) {
@@ -430,6 +599,208 @@ function openMacApp(appName: string) {
 
 function escapeAppleScriptText(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+function runAppleScript(script: string) {
+  return new Promise<string>((resolve, reject) => {
+    execFile('osascript', ['-e', script], (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || error.message))
+        return
+      }
+
+      resolve(stdout.trim())
+    })
+  })
+}
+
+function createShortcutId(name: string) {
+  const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+  return `${cleanName || 'shortcut'}-${Date.now().toString(36)}`
+}
+
+function getShortcutSymbol(info: CapturedWindowInfo) {
+  const source = `${info.title} ${info.appName} ${info.url}`.toLowerCase()
+
+  if (source.includes('feishu') || source.includes('lark') || source.includes('飞书')) return 'doc'
+  if (source.includes('chatgpt') || source.includes('openai')) return 'spark'
+  if (source.includes('xiaohongshu') || source.includes('小红书')) return 'link'
+  if (info.url) return 'link'
+  return 'app'
+}
+
+function getShortcutAccent(info: CapturedWindowInfo) {
+  const source = `${info.appName} ${info.url}`.toLowerCase()
+
+  if (source.includes('chrome')) return '#22c55e'
+  if (source.includes('safari')) return '#3370ff'
+  if (source.includes('xiaohongshu')) return '#7c3aed'
+  if (source.includes('chatgpt') || source.includes('openai')) return '#0f766e'
+  return '#3370ff'
+}
+
+function parseCapturedWindowInfo(output: string): CapturedWindowInfo | null {
+  const parts = output.split('\n---FLOAT-LAUNCHER---\n')
+  if (parts.length < 8) {
+    return null
+  }
+
+  const [appName, bundleId, title, url, rawX, rawY, rawWidth, rawHeight] = parts
+  const x = Number(rawX)
+  const y = Number(rawY)
+  const width = Number(rawWidth)
+  const height = Number(rawHeight)
+
+  if (!appName || SELF_BUNDLE_IDS.has(bundleId) || appName === 'Electron' || appName === APP_NAME) {
+    return null
+  }
+
+  return {
+    appName,
+    bundleId,
+    title,
+    url,
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0,
+    width: Number.isFinite(width) ? width : 0,
+    height: Number.isFinite(height) ? height : 0
+  }
+}
+
+function createCaptureFrontmostWindowScript() {
+  return `
+set delimiterText to "---FLOAT-LAUNCHER---"
+set frontAppName to ""
+set frontBundleId to ""
+set windowTitle to ""
+set urlValue to ""
+set windowX to 0
+set windowY to 0
+set windowWidth to 0
+set windowHeight to 0
+
+tell application "System Events"
+  set frontProcess to first application process whose frontmost is true
+  set frontAppName to name of frontProcess
+  set frontBundleId to bundle identifier of frontProcess
+  if exists front window of frontProcess then
+    set windowTitle to name of front window of frontProcess
+    set windowPosition to position of front window of frontProcess
+    set windowSize to size of front window of frontProcess
+    set windowX to item 1 of windowPosition
+    set windowY to item 2 of windowPosition
+    set windowWidth to item 1 of windowSize
+    set windowHeight to item 2 of windowSize
+  end if
+end tell
+
+if frontAppName is "Google Chrome" then
+  tell application "Google Chrome"
+    if (count of windows) > 0 then
+      set windowTitle to title of active tab of front window
+      set urlValue to URL of active tab of front window
+    end if
+  end tell
+else if frontAppName is "Safari" or frontAppName is "Safari浏览器" then
+  tell application "Safari"
+    if (count of windows) > 0 then
+      set windowTitle to name of front document
+      set urlValue to URL of front document
+    end if
+  end tell
+end if
+
+return frontAppName & linefeed & delimiterText & linefeed & frontBundleId & linefeed & delimiterText & linefeed & windowTitle & linefeed & delimiterText & linefeed & urlValue & linefeed & delimiterText & linefeed & (windowX as text) & linefeed & delimiterText & linefeed & (windowY as text) & linefeed & delimiterText & linefeed & (windowWidth as text) & linefeed & delimiterText & linefeed & (windowHeight as text)
+`
+}
+
+async function captureFrontmostWindowInfo() {
+  if (process.platform !== 'darwin') {
+    return null
+  }
+
+  try {
+    const output = await runAppleScript(createCaptureFrontmostWindowScript())
+    return parseCapturedWindowInfo(output)
+  } catch (error) {
+    console.warn('读取前台窗口失败:', error)
+    return null
+  }
+}
+
+function createRestoreWindowScript(info: CapturedWindowInfo) {
+  const appName = escapeAppleScriptText(info.appName)
+  const center = getFloatingWindowCenter()
+  const targetX = Math.round((center?.x ?? info.x) - 110)
+  const targetY = Math.round((center?.y ?? info.y) - 80)
+
+  return `
+tell application "System Events"
+  if exists application process "${appName}" then
+    tell application process "${appName}"
+      if exists front window then
+        set originalPosition to {${Math.round(info.x)}, ${Math.round(info.y)}}
+        set originalSize to {${Math.round(info.width)}, ${Math.round(info.height)}}
+        set position of front window to {${targetX}, ${targetY}}
+        set size of front window to {220, 160}
+        delay 0.16
+        set position of front window to originalPosition
+        set size of front window to originalSize
+      end if
+    end tell
+  end if
+end tell
+`
+}
+
+async function animateWindowAbsorption(info: CapturedWindowInfo) {
+  if (!info.width || !info.height) {
+    return
+  }
+
+  try {
+    await runAppleScript(createRestoreWindowScript(info))
+  } catch (error) {
+    console.warn('窗口吸收动画失败:', error)
+  }
+}
+
+async function handleExternalWindowAbsorb(snapshotPromise: Promise<CapturedWindowInfo | null> | null) {
+  const info = await (snapshotPromise ?? captureFrontmostWindowInfo())
+  if (!info) {
+    return
+  }
+
+  await animateWindowAbsorption(info)
+  const shortcuts = getShortcuts()
+  const target = info.url || info.appName
+  const existingShortcut = shortcuts.find((shortcut) => shortcut.target === target)
+
+  if (existingShortcut) {
+    const nextShortcuts = shortcuts.map((shortcut) => (
+      shortcut.id === existingShortcut.id ? { ...shortcut, enabled: true } : shortcut
+    ))
+    saveShortcuts(nextShortcuts)
+    store.set('activeShortcutId', existingShortcut.id)
+    floatingWindow?.webContents.send('shortcuts:absorbed', existingShortcut.name)
+    return
+  }
+
+  const name = (info.title || info.appName).trim()
+  const nextShortcut: Shortcut = {
+    id: createShortcutId(name),
+    name,
+    kind: info.url ? 'url' : 'app',
+    target,
+    accent: getShortcutAccent(info),
+    symbol: getShortcutSymbol(info),
+    enabled: true
+  }
+
+  const nextShortcuts = [...shortcuts, nextShortcut]
+  saveShortcuts(nextShortcuts)
+  store.set('activeShortcutId', nextShortcut.id)
+  floatingWindow?.webContents.send('shortcuts:absorbed', nextShortcut.name)
 }
 
 function createHotkeyScript(hotkey: string, targetApp?: { name: string; processId: number } | null) {
@@ -926,6 +1297,7 @@ app.whenReady().then(() => {
   createTray()
   createAppMenu()
   startFrontmostTracking()
+  startWindowDropMonitor()
 
   ipcMain.handle('open-feishu-meeting', async () => {
     await startFeishuRecording()
@@ -1046,6 +1418,7 @@ app.on('window-all-closed', () => {
 // 应用退出前清理
 app.on('before-quit', () => {
   setHotkeyRecording(false)
+  stopWindowDropMonitor()
 
   if (frontmostTrackingTimer) {
     clearInterval(frontmostTrackingTimer)

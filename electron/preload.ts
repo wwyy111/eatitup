@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('hotkey-recording:captured', listener)
     return () => ipcRenderer.removeListener('hotkey-recording:captured', listener)
   },
+  onShortcutAbsorbed: (callback: (name: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, name: string) => callback(name)
+    ipcRenderer.on('shortcuts:absorbed', listener)
+    return () => ipcRenderer.removeListener('shortcuts:absorbed', listener)
+  },
   openFeishuMeeting: () => ipcRenderer.invoke('open-feishu-meeting'),
   openMainWindow: () => ipcRenderer.invoke('open-main-window'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),

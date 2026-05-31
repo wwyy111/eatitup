@@ -35,7 +35,7 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
 }
 
@@ -183,6 +183,10 @@ code {
   cursor: grabbing;
   transform: perspective(220px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) scale(0.96);
   transition: transform 80ms ease;
+}
+
+.floating-button-container.is-absorbing {
+  animation: floating-absorb-pop 520ms cubic-bezier(0.2, 0.9, 0.24, 1.18);
 }
 
 .floating-stage:hover .floating-burst-item,
@@ -360,6 +364,31 @@ code {
 
 .floating-config.is-hotkey-mode {
   --accent: #7c3aed;
+}
+
+.floating-absorb-toast {
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 108px);
+  transform: translate(-50%, -50%);
+  min-width: 72px;
+  max-width: 138px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  background: rgba(17, 24, 39, 0.92);
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.2);
+  animation: floating-toast-in 1400ms ease both;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .launcher-shell {
@@ -790,5 +819,34 @@ code {
   }
   100% {
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+@keyframes floating-absorb-pop {
+  0% {
+    transform: perspective(220px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) scale(1);
+  }
+  46% {
+    transform: perspective(220px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) scale(1.22);
+    filter: saturate(1.2);
+  }
+  100% {
+    transform: perspective(220px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) scale(1);
+  }
+}
+
+@keyframes floating-toast-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -42%) scale(0.82);
+  }
+  14%,
+  78% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -62%) scale(0.96);
   }
 }
