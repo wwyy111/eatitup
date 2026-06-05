@@ -29,9 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startFloatingDrag: (pointerPosition: { x: number; y: number }) => {
     ipcRenderer.send('floating-drag-start', pointerPosition)
   },
-  moveFloatingWindow: (pointerPosition: { x: number; y: number }) => {
-    ipcRenderer.send('floating-drag-move', pointerPosition)
-  },
+  moveFloatingWindow: (pointerPosition: { x: number; y: number }) => ipcRenderer.invoke('floating-drag-move', pointerPosition),
   endFloatingDrag: (position?: { x: number; y: number }) => ipcRenderer.send('floating-drag-end', position),
   setFloatingMousePassthrough: (isPassthrough: boolean) => {
     ipcRenderer.send('floating-mouse-passthrough', isPassthrough)

@@ -22,6 +22,7 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const APP_NAME = '浮点启动台'
 const SELF_PROCESS_IDS = new Set([process.pid])
 const FLOATING_BUTTON_SIZE = 64
+const FLOATING_WINDOW_SIZE = 320
 const LEGACY_FLOATING_WINDOW_WIDTH = 286
 const LEGACY_FLOATING_WINDOW_HEIGHT = 220
 const ABSORB_TARGET_RADIUS = 74
@@ -69,9 +70,7 @@ app.on('second-instance', () => {
 
 function createFloatingWindow() {
   const buttonPosition = getStoredFloatingButtonPosition()
-  const display = screen.getDisplayNearestPoint(buttonPosition)
-  const bounds = getFloatingOverlayBounds(display.bounds)
-  const clampedButtonPosition = clampFloatingButtonScreenPosition(buttonPosition, bounds)
+  const { bounds, buttonPosition: clampedButtonPosition } = getFloatingWindowStateForButton(buttonPosition)
 
   floatingWindow = new BrowserWindow({
     x: bounds.x,
@@ -97,7 +96,7 @@ function createFloatingWindow() {
     }
   })
   floatingWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  floatingWindow.setAlwaysOnTop(true, 'screen-saver')
+  floatingWindow.setAlwaysOnTop(true, 'floating')
   floatingWindow.setBounds(bounds)
 
   // 加载悬浮按钮页面
@@ -156,7 +155,7 @@ function getStoredFloatingButtonPosition() {
 
 function clampFloatingButtonScreenPosition(
   position: { x: number; y: number },
-  bounds = floatingWindow?.getBounds() ?? screen.getDisplayNearestPoint(position).bounds
+  bounds = getFloatingWorkAreaForPoint(position)
 ) {
   const margin = FLOATING_BUTTON_SIZE / 2
   return {
@@ -165,25 +164,61 @@ function clampFloatingButtonScreenPosition(
   }
 }
 
-function getFloatingOverlayBounds(bounds: { x: number; y: number; width: number; height: number }) {
-  if (process.platform === 'darwin' && bounds.x === 0 && bounds.y > 0) {
-    return {
-      ...bounds,
-      y: 0
-    }
+function getFloatingWorkAreaForPoint(position: { x: number; y: number }) {
+  const display = screen.getDisplayNearestPoint(position)
+  return process.platform === 'darwin' ? display.workArea : display.bounds
+}
+
+function getFloatingWindowStateForButton(position: { x: number; y: number }) {
+  const workArea = getFloatingWorkAreaForPoint(position)
+  const buttonPosition = clampFloatingButtonScreenPosition(position, workArea)
+  const width = Math.min(FLOATING_WINDOW_SIZE, workArea.width)
+  const height = Math.min(FLOATING_WINDOW_SIZE, workArea.height)
+  const x = Math.max(
+    workArea.x,
+    Math.min(workArea.x + workArea.width - width, Math.round(buttonPosition.x - width / 2))
+  )
+  const y = Math.max(
+    workArea.y,
+    Math.min(workArea.y + workArea.height - height, Math.round(buttonPosition.y - height / 2))
+  )
+
+  return {
+    bounds: { x, y, width, height },
+    buttonPosition
+  }
+}
+
+function moveFloatingButtonToScreenPosition(position: { x: number; y: number }) {
+  const { bounds, buttonPosition } = getFloatingWindowStateForButton(position)
+
+  if (floatingWindow) {
+    floatingWindow.setBounds(bounds)
   }
 
-  return bounds
+  store.set('floatingButtonPosition', buttonPosition)
+  store.set('windowPosition', { x: bounds.x, y: bounds.y })
+  store.set('windowSize', { width: bounds.width, height: bounds.height })
+
+  return {
+    x: buttonPosition.x - bounds.x,
+    y: buttonPosition.y - bounds.y
+  }
 }
 
 function getFloatingButtonLocalPosition() {
-  const bounds = floatingWindow?.getBounds() ?? screen.getPrimaryDisplay().bounds
-  const position = clampFloatingButtonScreenPosition(getStoredFloatingButtonPosition(), bounds)
-  store.set('floatingButtonPosition', position)
+  const screenPosition = getStoredFloatingButtonPosition()
+  const { bounds, buttonPosition } = getFloatingWindowStateForButton(screenPosition)
+
+  if (floatingWindow) {
+    floatingWindow.setBounds(bounds)
+  }
+
+  store.set('floatingButtonPosition', buttonPosition)
 
   return {
-    x: position.x - bounds.x,
-    y: position.y - bounds.y
+    x: buttonPosition.x - bounds.x,
+    y: buttonPosition.y - bounds.y
   }
 }
 
@@ -193,13 +228,17 @@ function saveFloatingButtonLocalPosition(position: { x: number; y: number }) {
   }
 
   const bounds = floatingWindow.getBounds()
-  const nextPosition = clampFloatingButtonScreenPosition({
+  const nextPosition = {
     x: bounds.x + position.x,
     y: bounds.y + position.y
-  }, bounds)
+  }
 
-  store.set('floatingButtonPosition', nextPosition)
-  return nextPosition
+  const localPosition = moveFloatingButtonToScreenPosition(nextPosition)
+  const nextBounds = floatingWindow.getBounds()
+  return {
+    x: nextBounds.x + localPosition.x,
+    y: nextBounds.y + localPosition.y
+  }
 }
 
 function setFloatingMousePassthrough(isPassthrough: boolean) {
@@ -1460,10 +1499,18 @@ app.whenReady().then(() => {
     setFloatingMousePassthrough(false)
   })
 
-  ipcMain.on('floating-drag-move', () => {
+  ipcMain.handle('floating-drag-move', async (_event, pointerPosition?: { x?: unknown; y?: unknown }) => {
     if (!floatingWindow) return
 
     suppressMainWindowActivation()
+    const x = Number(pointerPosition?.x)
+    const y = Number(pointerPosition?.y)
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return getFloatingButtonLocalPosition()
+    }
+
+    return moveFloatingButtonToScreenPosition({ x, y })
   })
 
   ipcMain.on('floating-drag-end', (_event, position?: { x?: unknown; y?: unknown }) => {

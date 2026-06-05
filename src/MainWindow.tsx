@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, FormEvent, KeyboardEvent } from 'react'
 import {
+  AppWindow,
+  ArrowSquareOut,
+  CheckCircle,
+  Command,
+  GearSix,
+  Keyboard,
+  LinkSimple,
+  Microphone,
+  Play,
+  Plus,
+  Power,
+  SidebarSimple,
+  Sparkle,
+  Trash
+} from '@phosphor-icons/react'
+import {
   DEFAULT_SHORTCUTS,
   SHORTCUT_KIND_LABEL,
   type LauncherMode,
@@ -10,6 +26,11 @@ import {
 
 const colorOptions = ['#3370ff', '#22c55e', '#ff4d4f', '#f59e0b', '#7c3aed', '#0f766e']
 const symbolOptions = ['rec', 'doc', 'bolt', 'app', 'link', 'key', 'spark']
+const shortcutTypeOptions: Array<{ kind: ShortcutKind; label: string; icon: typeof LinkSimple }> = [
+  { kind: 'url', label: '网页链接', icon: LinkSimple },
+  { kind: 'app', label: '本机 App', icon: AppWindow },
+  { kind: 'hotkey', label: '快捷键', icon: Keyboard }
+]
 
 const emptyDraft = {
   name: '',
@@ -56,17 +77,24 @@ function formatHotkeyForDisplay(hotkey: string) {
     .replace(/\+/g, ' ')
 }
 
+function getShortcutIcon(shortcut: Shortcut) {
+  if (shortcut.kind === 'feishu-record') return Microphone
+  if (shortcut.kind === 'hotkey') return Keyboard
+  if (shortcut.kind === 'app') return AppWindow
+  return LinkSimple
+}
+
+function getShortcutDetail(shortcut: Shortcut) {
+  if (shortcut.kind === 'hotkey') return formatHotkeyForDisplay(shortcut.target)
+  if (shortcut.kind === 'feishu-record') return '打开飞书妙记并尝试开始录音'
+  return shortcut.target
+}
+
 const MainWindow = () => {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS)
-  const [activeShortcutId, setActiveShortcutId] = useState(DEFAULT_SHORTCUTS[0].id)
   const [launcherMode, setLauncherMode] = useState<LauncherMode>('launch')
   const [draft, setDraft] = useState(emptyDraft)
   const [isSaving, setIsSaving] = useState(false)
-
-  const activeShortcut = useMemo(
-    () => shortcuts.find((shortcut) => shortcut.id === activeShortcutId) ?? shortcuts[0],
-    [activeShortcutId, shortcuts]
-  )
 
   const enabledShortcuts = useMemo(
     () => shortcuts.filter((shortcut) => shortcut.enabled),
@@ -87,15 +115,13 @@ const MainWindow = () => {
     let isMounted = true
 
     async function loadShortcuts() {
-      const [storedShortcuts, storedActiveShortcutId, storedLauncherMode] = await Promise.all([
+      const [storedShortcuts, storedLauncherMode] = await Promise.all([
         window.electronAPI?.getShortcuts() ?? Promise.resolve(DEFAULT_SHORTCUTS),
-        window.electronAPI?.getActiveShortcut() ?? Promise.resolve(DEFAULT_SHORTCUTS[0].id),
         window.electronAPI?.getLauncherMode() ?? Promise.resolve('launch' as LauncherMode)
       ])
 
       if (!isMounted) return
       setShortcuts(storedShortcuts)
-      setActiveShortcutId(storedActiveShortcutId)
       setLauncherMode(storedLauncherMode)
     }
 
@@ -154,11 +180,6 @@ const MainWindow = () => {
     setDraft(emptyDraft)
   }
 
-  const handleSetActiveShortcut = async (shortcutId: string) => {
-    setActiveShortcutId(shortcutId)
-    await window.electronAPI?.setActiveShortcut(shortcutId)
-  }
-
   const handleToggleShortcut = async (shortcutId: string) => {
     const nextShortcuts = shortcuts.map((shortcut) => {
       if (shortcut.id !== shortcutId) return shortcut
@@ -176,14 +197,8 @@ const MainWindow = () => {
     if (!shouldDelete) return
 
     const nextShortcuts = shortcuts.filter((item) => item.id !== shortcutId)
-    const nextActiveShortcut = nextShortcuts.find((item) => item.enabled) ?? nextShortcuts[0]
 
     await persistShortcuts(nextShortcuts)
-
-    if (activeShortcutId === shortcutId && nextActiveShortcut) {
-      setActiveShortcutId(nextActiveShortcut.id)
-      await window.electronAPI?.setActiveShortcut(nextActiveShortcut.id)
-    }
   }
 
   const handleRunShortcut = async (shortcutId: string) => {
@@ -223,29 +238,43 @@ const MainWindow = () => {
     <main className="launcher-shell">
       <aside className="launcher-sidebar">
         <div className="brand-row">
-          <div className="brand-mark" aria-hidden="true">浮</div>
+          <div className="brand-mark" aria-hidden="true">
+            <Sparkle weight="fill" />
+          </div>
           <div>
             <h1>浮点启动台</h1>
             <span>Local</span>
           </div>
         </div>
 
-        <div className="sidebar-card">
-          <span>当前悬浮球</span>
-          <strong>{launcherMode === 'hotkey' ? '快捷键模式' : activeShortcut?.name ?? '未选择'}</strong>
-          <p>悬停展开，点击圆形按钮即可执行；拖出按钮可停用快捷项。</p>
-        </div>
+        <nav className="launcher-nav" aria-label="启动台设置">
+          <a className="is-active" href="#shortcuts">
+            <SidebarSimple weight="bold" />
+            工作台
+          </a>
+          <a href="#composer">
+            <Plus weight="bold" />
+            新建入口
+          </a>
+          <a href="#floating">
+            <GearSix weight="bold" />
+            悬浮球
+          </a>
+        </nav>
 
         <div className="sidebar-metrics" aria-label="快捷项统计">
           <div>
+            <Power weight="bold" />
             <span>{enabledShortcuts.length}</span>
             <p>启用</p>
           </div>
           <div>
+            <ArrowSquareOut weight="bold" />
             <span>{launchShortcutCount}</span>
             <p>启动</p>
           </div>
           <div>
+            <Command weight="bold" />
             <span>{hotkeyShortcutCount}</span>
             <p>快捷键</p>
           </div>
@@ -256,9 +285,9 @@ const MainWindow = () => {
         <div className="launcher-page">
           <div className="launcher-toolbar">
             <div>
-              <span className="eyebrow">配置工作台</span>
-              <h2>管理悬浮球快捷项</h2>
-              <p>添加、启停、运行和模式切换都应该在这里一眼完成。</p>
+              <span className="toolbar-kicker">快捷项管理</span>
+              <h2>新增、启停、管理快捷项</h2>
+              <p>这里是悬浮球的配置中心：添加入口，维护快捷项，决定悬停时出现什么。</p>
             </div>
             <div className="mode-actions">
               <div className="segmented-control">
@@ -267,6 +296,7 @@ const MainWindow = () => {
                   type="button"
                   onClick={() => handleSetLauncherMode('launch')}
                 >
+                  <ArrowSquareOut weight="bold" />
                   启动
                 </button>
                 <button
@@ -274,82 +304,20 @@ const MainWindow = () => {
                   type="button"
                   onClick={() => handleSetLauncherMode('hotkey')}
                 >
+                  <Keyboard weight="bold" />
                   快捷键
                 </button>
               </div>
-              <button
-                className="primary-action"
-                type="button"
-                onClick={() => activeShortcut && handleRunShortcut(activeShortcut.id)}
-              >
-                运行
-              </button>
             </div>
           </div>
 
           <div className="launcher-grid">
-            <section className="shortcut-panel">
+            <section className="config-panel" id="composer">
               <div className="section-heading">
                 <div>
-                  <h3>快捷项</h3>
-                  <p>选择默认启动项，或直接运行、删除、停用。</p>
+                  <h3>添加入口</h3>
+                  <p>新增网页、App 或快捷键动作。</p>
                 </div>
-                <span>{enabledShortcuts.length} / {shortcuts.length} 启用</span>
-              </div>
-
-              <div className="shortcut-list">
-                {shortcuts.length === 0 && (
-                  <div className="empty-shortcut-state">
-                    还没有快捷项
-                  </div>
-                )}
-
-                {shortcuts.map((shortcut) => (
-                  <article
-                    className={`shortcut-row ${shortcut.id === activeShortcutId ? 'is-active' : ''}`}
-                    key={shortcut.id}
-                    style={{ '--accent': shortcut.accent } as CSSProperties}
-                  >
-                    <button
-                      className="shortcut-identity"
-                      type="button"
-                      onClick={() => handleSetActiveShortcut(shortcut.id)}
-                    >
-                      <span className="shortcut-icon">{shortcut.symbol.slice(0, 2)}</span>
-                      <span>
-                        <strong>{shortcut.name}</strong>
-                        <small>{SHORTCUT_KIND_LABEL[shortcut.kind]} · {shortcut.target}</small>
-                      </span>
-                    </button>
-
-                    <div className="shortcut-actions">
-                      <button type="button" onClick={() => handleRunShortcut(shortcut.id)}>运行</button>
-                      <button
-                        className="danger-action"
-                        type="button"
-                        onClick={() => handleDeleteShortcut(shortcut.id)}
-                        aria-label={`删除 ${shortcut.name}`}
-                        title="删除"
-                      >
-                        ×
-                      </button>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={shortcut.enabled}
-                          onChange={() => handleToggleShortcut(shortcut.id)}
-                        />
-                        <span />
-                      </label>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="config-panel">
-              <div className="section-heading">
-                <h3>添加入口</h3>
                 <span>{isSaving ? '保存中' : '本地保存'}</span>
               </div>
 
@@ -363,17 +331,24 @@ const MainWindow = () => {
                 />
               </label>
 
-              <label>
-                类型
-                <select
-                  value={draft.kind}
-                  onChange={(event) => setDraft({ ...draft, kind: event.target.value as ShortcutKind })}
-                >
-                  <option value="url">网页/平台链接</option>
-                  <option value="app">本机 App</option>
-                  <option value="hotkey">快捷键</option>
-                </select>
-              </label>
+              <div className="kind-picker" role="radiogroup" aria-label="快捷项类型">
+                {shortcutTypeOptions.map((option) => {
+                  const OptionIcon = option.icon
+                  return (
+                    <button
+                      key={option.kind}
+                      className={draft.kind === option.kind ? 'is-selected' : ''}
+                      type="button"
+                      role="radio"
+                      aria-checked={draft.kind === option.kind}
+                      onClick={() => setDraft({ ...draft, kind: option.kind })}
+                    >
+                      <OptionIcon weight="bold" />
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
 
               {draft.kind === 'hotkey' ? (
                 <label>
@@ -419,36 +394,112 @@ const MainWindow = () => {
                 </details>
               )}
 
-              <div className="swatch-group" aria-label="颜色">
-                {colorOptions.map((color) => (
-                  <button
-                    key={color}
-                    className={draft.accent === color ? 'is-selected' : ''}
-                    style={{ background: color }}
-                    type="button"
-                    onClick={() => setDraft({ ...draft, accent: color })}
-                    aria-label={color}
-                  />
-                ))}
-              </div>
-
-              <div className="symbol-grid">
-                {symbolOptions.map((symbol) => (
-                  <button
-                    key={symbol}
-                    className={draft.symbol === symbol ? 'is-selected' : ''}
-                    type="button"
-                    onClick={() => setDraft({ ...draft, symbol })}
-                  >
-                    {symbol}
-                  </button>
-                ))}
-              </div>
-
               <button className="primary-action" type="submit">
+                <CheckCircle weight="fill" />
                 添加快捷项
               </button>
+
+              <div className="form-split">
+                <div>
+                  <span className="field-label">颜色</span>
+                  <div className="swatch-group" aria-label="颜色">
+                    {colorOptions.map((color) => (
+                      <button
+                        key={color}
+                        className={draft.accent === color ? 'is-selected' : ''}
+                        style={{ background: color }}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, accent: color })}
+                        aria-label={color}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="field-label">短标识</span>
+                  <div className="symbol-grid">
+                    {symbolOptions.map((symbol) => (
+                      <button
+                        key={symbol}
+                        className={draft.symbol === symbol ? 'is-selected' : ''}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, symbol })}
+                      >
+                        {symbol}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
               </form>
+            </section>
+
+            <section className="shortcut-panel" id="shortcuts">
+              <div className="section-heading">
+                <div>
+                  <h3>已有快捷项</h3>
+                  <p>点击运行，或在右侧停用、删除。</p>
+                </div>
+                <span>{enabledShortcuts.length} / {shortcuts.length} 启用</span>
+              </div>
+
+              <div className="shortcut-list">
+                {shortcuts.length === 0 && (
+                  <div className="empty-shortcut-state">
+                    还没有快捷项
+                  </div>
+                )}
+
+                {shortcuts.map((shortcut) => (
+                  <article
+                    className="shortcut-row"
+                    key={shortcut.id}
+                    style={{ '--accent': shortcut.accent } as CSSProperties}
+                  >
+                    <button
+                      className="shortcut-identity"
+                      type="button"
+                      onClick={() => handleRunShortcut(shortcut.id)}
+                    >
+                      <span className="shortcut-icon">
+                        {(() => {
+                          const ShortcutIcon = getShortcutIcon(shortcut)
+                          return <ShortcutIcon weight="bold" />
+                        })()}
+                      </span>
+                      <span>
+                        <strong>{shortcut.name}</strong>
+                        <small>{SHORTCUT_KIND_LABEL[shortcut.kind]} · {getShortcutDetail(shortcut)}</small>
+                      </span>
+                    </button>
+
+                    <div className="shortcut-actions">
+                      <button type="button" onClick={() => handleRunShortcut(shortcut.id)}>
+                        <Play weight="fill" />
+                        运行
+                      </button>
+                      <button
+                        className="danger-action"
+                        type="button"
+                        onClick={() => handleDeleteShortcut(shortcut.id)}
+                        aria-label={`删除 ${shortcut.name}`}
+                        title="删除"
+                      >
+                        <Trash weight="bold" />
+                      </button>
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={shortcut.enabled}
+                          onChange={() => handleToggleShortcut(shortcut.id)}
+                        />
+                        <span />
+                      </label>
+                    </div>
+                  </article>
+                ))}
+              </div>
             </section>
           </div>
         </div>

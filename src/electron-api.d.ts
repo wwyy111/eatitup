@@ -23,7 +23,7 @@ declare global {
       maximizeWindow: () => Promise<void>
       closeWindow: () => Promise<void>
       startFloatingDrag: (pointerPosition: { x: number; y: number }) => void
-      moveFloatingWindow: (pointerPosition: { x: number; y: number }) => void
+      moveFloatingWindow: (pointerPosition: { x: number; y: number }) => Promise<{ x: number; y: number }>
       endFloatingDrag: (position?: { x: number; y: number }) => void
       setFloatingMousePassthrough: (isPassthrough: boolean) => void
     }
